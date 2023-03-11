@@ -1,0 +1,10 @@
+ez-up.sh
+deps/
+build
+dist
+**.egg*
+tmp
+venv*
+*.sw?
+src/quickhost_aws/data
+tests
