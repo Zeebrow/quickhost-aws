@@ -41,8 +41,6 @@ class KP(AWSResourceBase):
         self.client = session.client('ec2')
         self.ec2 = session.resource('ec2')
         self.app_name = app_name
-        self.key_name = app_name
-        self.key_filepath = C.DEFAULT_SSH_KEY_FILE_DIR / f"{self.key_name}.pem"
 
     def get_key_id(self) -> str:
         try:
@@ -57,69 +55,69 @@ class KP(AWSResourceBase):
             return None
         return get_single_result_id(resource=existing_key, resource_type='KeyPair', plural=True)
 
-    def _create_ssh_key_file(self, key_material: str, ssh_key_filepath=None):
-        rtn = True
-        if ssh_key_filepath is None:
-            # not overriden from config, set default
-            # @@@ just use ~/.ssh...
-            # @@@ actually dont
-            tgt_file = Path(f"./{self.app_name}.pem")
-        else:
-            if not ssh_key_filepath.endswith('.pem'):
-                tgt_file = Path(f"{ssh_key_filepath}.pem")
-            else:
-                tgt_file = Path(ssh_key_filepath)
+    def _create_ssh_key_file(self, key_material: str, ssh_key_filepath) -> None:
+        """
+        Create ssh key .pem file or raise
+        """
+        tgt_file = Path(ssh_key_filepath) # will be absolute filepath from AWSApp._parse_make (get rid of Path)
         if tgt_file.exists():
-            logger.warning(f"overwriting pem file '{tgt_file.absolute()}'")
-            rtn = False
-
+            logger.critical("Existing keyfile found at '{}' - refusing to overwrite!".format(ssh_key_filepath))
+            raise SystemExit(1)
         try:
             with tgt_file.open('w') as pemf:
                 pemf.writelines(key_material)
                 os.chmod(tgt_file.absolute(), 0o600)
-            logger.debug(f"saved private key to file '{tgt_file.absolute()}'")
+            logger.debug(f"saved private key to file '{ssh_key_filepath}'")
         except Exception as e:
-            logger.error(f"Exception creating ssh keyfile: {e}")
-            rtn = False
+            logger.critical(f"Exception creating ssh keyfile: {e}", exc_info=True)
+            raise SystemExit(1)
 
-        return rtn
 
     def create(self, ssh_key_filepath=None) -> bool:
         """Make a new ec2 keypair named for app"""
-        existing_key_pair = self.describe()
-        self.key_id = existing_key_pair['key_id']
-        self.key_fingerprint = existing_key_pair['key_id']
 
-        if self.key_id is not None:
+        # ew
+        # There will never be an existing keypair
+        # This is (yet another) textbook example oa premature optimization
+        existing_key_pair = self.describe()
+
+        if existing_key_pair['key_id'] is not None:
             # NOTE: You can't retreive key material unless you are creating the key
-            logger.warning(f"Ssh key already exists with id '{self.key_id}'")
+            logger.error("EC2 key pair already exists in AWS (id={}, fingerprint={}, region={})".format(
+                existing_key_pair['key_id'], existing_key_pair['key_fingerprint'], '@@@ uhhhh this is important...'))
+            raise SystemExit(1)
         else:
-            rtn = True
             new_key = self.client.create_key_pair(
-                KeyName=self.key_name,
+                KeyName=self.app_name,
                 DryRun=False,
                 KeyType='rsa',
                 TagSpecifications=[
                     {
                         'ResourceType': 'key-pair',
-                        'Tags': [ { 'Key': C.DEFAULT_APP_NAME, 'Value': self.app_name }, ]
+                        'Tags': [
+                            { 'Key': C.DEFAULT_APP_NAME, 'Value': self.app_name }, 
+                            { 'Key': 'ssh_key_filepath', 'Value': ssh_key_filepath }, 
+                        ]
                     },
                 ],
             )
-            safe_response = new_key
-            rtn = self._create_ssh_key_file(new_key['KeyMaterial'], ssh_key_filepath)
-
-            safe_response['KeyMaterial'] = "XXXXXXXXXX"
-            store_test_data(resource='AWSKeyPair', action='create_key_pair', response_data=new_key)
-            self.key_id = new_key['KeyPairId']
-            self.fingerprint = new_key['KeyFingerprint']
+            self._create_ssh_key_file(new_key['KeyMaterial'], ssh_key_filepath)
+            new_key_id = new_key['KeyPairId']
+            new_key_fp = new_key['KeyFingerprint']
             del new_key
-            return rtn
 
-    def describe(self, windows=False):
+            return {
+                'key_name': self.app_name,
+                'key_filepath': ssh_key_filepath,
+                'key_id': new_key_id,
+                'key_fingerprint': new_key_fp,
+            }
+
+    def describe(self):
         rtn = {
             'key_id': None,
             'key_fingerprint': None,
+            'ssh_key_filepath': None
         }
         try:
             existing_key = self.client.describe_key_pairs(
@@ -127,9 +125,14 @@ class KP(AWSResourceBase):
                 DryRun=False,
                 IncludePublicKey=True
             )
+            
             rtn['key_id'] = existing_key['KeyPairs'][0]['KeyPairId']
             rtn['key_fingerprint'] = existing_key['KeyPairs'][0]['KeyFingerprint']
-            store_test_data(resource='AWSKeypair', action='describe_key_pairs', response_data=scrub_datetime(existing_key))
+            for t in existing_key['KeyPairs'][0]['Tags']:
+                if t['Key'] == 'ssh_key_filepath':
+                    rtn['ssh_key_filepath'] = t['Value']
+            logger.debug("Describe keypairs: {}".format(rtn))
+            # store_test_data(resource='AWSKeypair', action='describe_key_pairs', response_data=scrub_datetime(existing_key))
             return rtn
         except ClientError as e:
             code = e.__dict__['response']['Error']['Code']
@@ -160,29 +163,31 @@ class KP(AWSResourceBase):
             padding.PKCS1v15()
         ).decode('utf-8')
 
-    def destroy(self, ssh_key_file=None) -> bool:
-        if not ssh_key_file:
-            ssh_key_file = Path(self.app_name + '.pem')
-        key_id = self.get_key_id()
-        if not key_id:
-            logger.warning(f"No key for app '{self.app_name}'")
-            return False
+    def destroy(self) -> bool:
+        key = self.describe()  # this should be passed into destroy but I'm le tired (and unpaid)
         try:
-            del_key = self.client.delete_key_pair(
-                KeyPairId=key_id,
-                DryRun=False
-            )
-            store_test_data(resource='AWSKeyPair', action='delete_key_pair', response_data=del_key)
-            if ssh_key_file.exists():
-                os.remove(ssh_key_file)
-                logger.debug(f"removed keyfile '{ssh_key_file.name}'")
-                return True
+            if key['key_id'] is not None:
+                del_key = self.client.delete_key_pair(
+                    KeyPairId=key['key_id'],
+                    DryRun=False
+                )
+                logger.debug("deleted EC2 key pair: {}".format(key['key_id']))
+                store_test_data(resource='AWSKeyPair', action='delete_key_pair', response_data=del_key)
             else:
-                logger.warning(f"Couldn't find key file '{ssh_key_file.name}' to remove!")
-                return False
+                logger.warning(f"No EC2 key pair for app '{self.app_name}' to delete")
+
+            if key['ssh_key_filepath'] is not None:
+                ssh_key_file = Path(key['ssh_key_filepath'])
+                if ssh_key_file.exists():
+                    ssh_key_file.unlink()
+                    logger.debug(f"removed keyfile '{ssh_key_file.name}'")
+                    return True
+                else:
+                    logger.warning(f"No ssh private key file to remove at '{ssh_key_file.absolute()}'")
+                    return False
         except ClientError as e:
             handle_client_error(e)
-            logger.warning(f"failed to delete keypair for app '{self.app_name}' (id: '{key_id}'):\n {e}")
+            logger.error("failed to delete keypair for app '{}' (id={}): {}".format(self.app_name, key['key_id'], e))
             return False
 
     def update(self):

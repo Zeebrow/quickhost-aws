@@ -238,6 +238,12 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
             vpc_id=self.vpc_id,
         )
         sg_describe = sg.describe()
+        kp = KP(
+            app_name=self.app_name,
+            region=params['region'],
+            profile=params['profile'],
+        )
+        kp_describe = kp.describe()
         hosts = AWSHost(
             app_name=self.app_name,
             region=params['region'],
@@ -245,32 +251,28 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
         )
         hosts_describe = hosts.describe()
         logger.debug(hosts_describe)
-        kp = KP(
-            app_name=self.app_name,
-            region=params['region'],
-            profile=params['profile'],
-        )
         passwords = {}
-        for h in hosts_describe:
-            if h['platform'] in ['Windows',]:
-                if params['show_password']:
-                    passwords[h['instance_id']] = kp.windows_get_password(h['instance_id'])
-                else:
-                    passwords[h['instance_id']] = '*****************************'
-        for h in hosts_describe:
-            for inst_id, pw in passwords.items():
-                if inst_id == h['instance_id']:
-                    h['password'] = pw
+        if hosts_describe is not None:
+            for h in hosts_describe:
+                if h['platform'] in ['Windows',]:
+                    if params['show_password']:
+                        passwords[h['instance_id']] = kp.windows_get_password(h['instance_id'])
+                    else:
+                        passwords[h['instance_id']] = '*****************************'
+            for h in hosts_describe:
+                for inst_id, pw in passwords.items():
+                    if inst_id == h['instance_id']:
+                        h['password'] = pw
 
-        kp_describe = kp.describe()
         caller_info = {
             'account': self.account,
             'invoking user': '/'.join(self.user.split('/')[1:])
         }
-        # idk man
+        # idk man.
         self._print_loaded_args(networking_params, heading="global params")
         self._print_loaded_args(caller_info)
         self._print_loaded_args(iam_vals)
+        print('*********************************************************')
         self._print_loaded_args(sg_describe)
         self._print_loaded_args(kp_describe)
         if hosts_describe is None:
@@ -343,7 +345,7 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
             logger.error(f"app named '{self.app_name}' already exists")
             return CliResponse(None, f"app named '{self.app_name}' already exists", QHExit.ABORTED)
 
-        kp_created = kp.create()
+        kp_created = kp.create(ssh_key_filepath=params['ssh_key_filepath'])
         sg_created = sg.create(
             ports=params['ports'],
             cidrs=params['cidrs'],
@@ -354,9 +356,10 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
             _os=params['os'],
             instance_type=params['instance_type'],
             sgid=sg.sgid,
-            key_name=params['key_name'],
+            key_name=kp_created['key_name'],
             disk_size=params['disk_size'],
             userdata=params['userdata'],
+            ssh_key_filepath=params['ssh_key_filepath'],
         )
         if kp_created and hosts_created is not None and sg_created:
             return CliResponse('Done', None, QHExit.OK)
@@ -443,16 +446,15 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
             if not Path(input_args['userdata']).exists():
                 raise RuntimeError(f"path to userdata '{input_args['userdata']}' does not exist!")
         make_params['userdata'] = input_args['userdata']
-        # ec2 key name
-        if 'key_name' in flags:
-            make_params['key_name'] = input_args['key_name']
-        else:
-            make_params['key_name'] = self.app_name
+
         # ec2 key pem file
-        if 'ssh_key_filepath' in flags:
-            make_params['ssh_key_filepath'] = input_args['ssh_key_filepath']
-        else:
-            make_params['ssh_key_filepath'] = f"{self.app_name}.pem"
+        # test: input is dir (done)
+        # test: input is a filename (treat as non-existant directory)
+        # test: input is None (default to ~/.ssh/<app_name>.pem)
+        # @@ should raise before y/n prompt...
+        make_params['ssh_key_filepath'] = self.get_ssh_key_filepath(input_args['ssh_key_filepath'])
+        logger.debug("Will create new private key at '{}'".format(make_params['ssh_key_filepath']))
+
         # the rest
         if 'dry_run' in flags:
             make_params['dry_run'] = input_args['dry_run']
@@ -474,3 +476,17 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
             make_params['disk_size']  = None
 
         return make_params
+
+    def get_ssh_key_filepath(self, input_arg: str):
+        if  input_arg is None:
+            _kfname = Path(os.path.expanduser("~")) / ".ssh" / f"{self.app_name}.pem"
+            return str(_kfname.absolute())
+        else:
+            _keypath = Path(input_arg)
+            if _keypath.is_dir():
+                _kfname = _keypath / f"{self.app_name}.pem"
+                return str(_kfname.absolute())
+            else:
+                logger.error('The ssh key filepath you entered is not a directory: {}'.format(_keypath.absolute()))
+                print('The ssh key filepath you entered is not a directory: {}'.format(_keypath.absolute()))
+                raise SystemExit(1)

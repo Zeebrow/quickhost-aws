@@ -40,6 +40,9 @@ class SG(AWSResourceBase):
         pass
 
     def get_security_group_id(self) -> str:
+        """
+        returns security group id, or None if security group does not exist
+        """
         dsg = None
         try:
             dsg = self.client.describe_security_groups(
@@ -48,7 +51,10 @@ class SG(AWSResourceBase):
                     { 'Name': 'group-name', 'Values': [ self.app_name, ] },
                 ],
             )
+            # @@@ could be None
             return dsg['SecurityGroups'][0]['GroupId']
+        except IndexError:
+            return None
         except botocore.exceptions.ClientError as e:
             # @@@ huh
             print(e)

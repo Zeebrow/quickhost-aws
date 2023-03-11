@@ -123,17 +123,17 @@ class AWSParser(ParserBase):
             required=False,
             default=1,
             help="number of hosts to create")
-        # @@@ untested
         parser.add_argument(
             "--ssh-key-filepath",
             required=False,
-            default=SUPPRESS,
-            help="download newly created key to target file (default is APP_NAME.pem in cwd)")
+            default=None,
+            help="directory in which to save ssh private key material (default is ~/.ssh/, named <app_name>.pem)")
         parser.add_argument(
             "-p", "--port",
             required=False,
             type=int,
             action='append',
+            # want SUPRESS, bc 22 is always added as a port
             default=SUPPRESS,
             help="open tcp port to all hosts in app (*nix default is 22, Windows 3389)")
         # @@@ untested

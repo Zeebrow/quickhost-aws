@@ -45,7 +45,7 @@ class AWSHost(AWSResourceBase):
         self.app_name = app_name
         self.host_count = None
 
-    def create(self, num_hosts, instance_type, sgid, subnet_id, userdata, key_name, _os, disk_size=None, dry_run=False):
+    def create(self, num_hosts, instance_type, sgid, subnet_id, userdata, key_name, _os, ssh_key_filepath, disk_size=None, dry_run=False):
         rtn = {
             "region": self.region,
             "num_hosts": num_hosts,
@@ -127,9 +127,9 @@ class AWSHost(AWSResourceBase):
             logger.debug(f"match {_os}")
             match _os:
                 case "ubuntu":
-                    ssh_strings.append(f"ssh -i {key_name}.pem ubuntu@{inst['public_ip']}")
+                    ssh_strings.append(f"ssh -i {ssh_key_filepath} ubuntu@{inst['public_ip']}")
                 case "amazon-linux-2":
-                    ssh_strings.append(f"ssh -i {key_name}.pem ec2-user@{inst['public_ip']}")
+                    ssh_strings.append(f"ssh -i {ssh_key_filepath} ec2-user@{inst['public_ip']}")
                 case "windows":
                     ssh_strings.append(f"*{inst['public_ip']}")
                 case "windows-core":
@@ -140,6 +140,7 @@ class AWSHost(AWSResourceBase):
         return rtn
 
     def describe(self) -> List[Any] | None:
+        # @@@ get ssh+key_filepath from host tag
         logger.debug("AWSHost.describe")
         instances = []
         try:
