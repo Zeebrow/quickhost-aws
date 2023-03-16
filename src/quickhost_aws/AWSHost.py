@@ -33,6 +33,19 @@ from .AWSResource import AWSResourceBase
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class HostsDescribe(dict):
+    app_name: str
+    ami: str
+    security_group: str
+    instance_id: str
+    instance_type: str
+    public_ip: str
+    subnet_id: str
+    vpc_id: str
+    state: str
+    platform: str
+
 class AWSHost(AWSResourceBase):
     """
     Class for AWS host operations.
@@ -139,7 +152,7 @@ class AWSHost(AWSResourceBase):
         [ print(f"host {i}) {ssh}") for i, ssh in enumerate(ssh_strings) ]
         return rtn
 
-    def describe(self) -> List[Any] | None:
+    def describe(self) -> List[HostsDescribe]:
         # @@@ get ssh+key_filepath from host tag
         logger.debug("AWSHost.describe")
         instances = []
@@ -152,7 +165,6 @@ class AWSHost(AWSResourceBase):
                 DryRun=False,
                 MaxResults=10,
             )
-            store_test_data(resource='AWSHost', action='describe_instances', response_data=quickhost.scrub_datetime(app_hosts))
             for r in app_hosts['Reservations']:
                 for host in r['Instances']:
                     if host['State']['Name'] in ['running', 'pending']:
@@ -161,7 +173,7 @@ class AWSHost(AWSResourceBase):
             logger.error(f"(Security Group) Unhandled botocore client exception: ({e.response['Error']['Code']}): {e.response['Error']['Message']}")
             raise e
         if len(instances) == 0:
-            return None
+            return []
         else:
             return instances
 
@@ -275,6 +287,7 @@ class AWSHost(AWSResourceBase):
         ]
         match os:
             case 'amazon-linux-2':
+                #e.g. amzn2-ami-hvm-2.0.20230307.0-x86_64-gp2
                 filterset.append(_new_filter('name', 'amzn2-ami-hvm-2.0.*-x86_64-gp2'),)
             case 'ubuntu':
                 filterset.append(_new_filter('name', '*ubuntu*22.04*'),)
@@ -296,7 +309,7 @@ class AWSHost(AWSResourceBase):
             "device_name": sortedimages[-1]['BlockDeviceMappings'][0]['DeviceName'],
         }
 
-    def _parse_host_output(self, host: dict, none_val=None):
+    def _parse_host_output(self, host: dict, none_val=None) -> HostsDescribe:
         """
         Parse the output of boto3's "ec2.describe_instances()" Reservations.Instances for data.
         If a property cannot be retrieved, it will be replaced with `none_val`.
@@ -304,18 +317,18 @@ class AWSHost(AWSResourceBase):
         none_val = None
         # @@@ E731 I want test cases first
         _try_get_attr = lambda d, attr: d[attr] if attr in d.keys() else none_val  # noqa: E731
-        return {
-            'app_name': self.app_name,
-            'ami': _try_get_attr(host, 'ImageId'),
-            'security_group': _try_get_attr(host, 'SecurityGroups')[0]['GroupId'],
-            'instance_id': _try_get_attr(host, 'InstanceId'),
-            'instance_type': _try_get_attr(host, 'InstanceType'),
-            'public_ip': _try_get_attr(host, 'PublicIpAddress'),
-            'subnet_id': _try_get_attr(host, 'SubnetId'),
-            'vpc_id': _try_get_attr(host, 'VpcId'),
-            'state': host['State']['Name'],
-            'platform': _try_get_attr(host, 'PlatformDetails'),
-        }
+        return HostsDescribe(
+            app_name=self.app_name,
+            ami=_try_get_attr(host, 'ImageId'),
+            security_group=_try_get_attr(host, 'SecurityGroups')[0]['GroupId'],
+            instance_id=_try_get_attr(host, 'InstanceId'),
+            instance_type=_try_get_attr(host, 'InstanceType'),
+            public_ip=_try_get_attr(host, 'PublicIpAddress'),
+            subnet_id=_try_get_attr(host, 'SubnetId'),
+            vpc_id=_try_get_attr(host, 'VpcId'),
+            state=host['State']['Name'],
+            platform=_try_get_attr(host, 'PlatformDetails'),
+        )
 
     def get_userdata(self, filename: str):
         data = None
@@ -413,7 +426,7 @@ class AWSHost(AWSResourceBase):
                 other_hosts, len(ready_hosts), tgt_count, ready_hosts, len(waiting_on_hosts), waiting_on_hosts
             ), end='')
             time.sleep(1)
-
+    
 
 def _new_filter(name: str, values: list | str):
     if (isinstance(values, str)):
