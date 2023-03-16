@@ -271,7 +271,7 @@ class AWSHost(AWSResourceBase):
                 if host['State']['Name'] in states:
                     app_instances.append(quickhost.scrub_datetime(host))
                     inst = self._parse_host_output(host=host)
-                    instance_ids.append(inst['instance_id'])
+                    instance_ids.append(inst.instance_id)
         if instance_ids == []:
             return None
         return instance_ids
@@ -286,6 +286,8 @@ class AWSHost(AWSResourceBase):
             _new_filter('architecture', 'x86_64'),
         ]
         match os:
+            case 'al2023':
+                filterset.append(_new_filter('name', 'al2023-ami-2023.*-kernel-6.?-x86_64'))
             case 'amazon-linux-2':
                 #e.g. amzn2-ami-hvm-2.0.20230307.0-x86_64-gp2
                 filterset.append(_new_filter('name', 'amzn2-ami-hvm-2.0.*-x86_64-gp2'),)

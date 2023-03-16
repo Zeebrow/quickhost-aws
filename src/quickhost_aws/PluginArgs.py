@@ -168,6 +168,7 @@ class AWSParser(ParserBase):
             default='amazon-linux-2',
             help="The OS to run on the host ('-core' means no GUI)",
             choices=[
+                "al2023",
                 "amazon-linux-2",
                 "ubuntu",
                 "windows",

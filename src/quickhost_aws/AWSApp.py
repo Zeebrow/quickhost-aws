@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 import json
 import yaml
+from textwrap import dedent
 
 import boto3
 
@@ -182,6 +183,13 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
         user_name = whoami['Arn'].split(":")[5].split("/")[-1]
         user_id = whoami['UserId']
         account = whoami['Account']
+        confirmation_line = dedent(f"""\
+            Target account:     {whoami['Account']}
+            Home Region:        {init_args['region']}
+            Calling user:       {user_name}
+            Calling profile:    {whoami['profile']}
+        """)
+        print(confirmation_line)
         inp = input("About to initialize quickhost using:\nuser:\t\t{} ({})\naccount:\t{}\n\nContinue? (y/n) ".format(
             user_name, user_id, account))
         if not inp.lower() == ('y' or 'yes'):
@@ -379,8 +387,7 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
                 print("aborted.")
                 rc = QHExit.ABORTED
                 return CliResponse(rc, "", "")
-        self.load_default_config()
-        print(args)
+        self.load_default_config(region=args['region'])
         kp_destroyed = KP(
             app_name=self.app_name,
             region=args['region'],
