@@ -121,7 +121,7 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
         """
         TODO: @@@ all regions
         """
-        logger.debug("plugin destroy")
+        logger.info("Destroy plugin '{}'".format(self.plugin_name))
         logger.debug("plugin destroy args {}".format(plugin_destroy_args))
         params = {
             "app_name": "uninstall-quickhost-aws",
@@ -140,10 +140,11 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
         account = whoami['Account']
         inp = input("About to destroy quickhost using:\nuser:\t\t{} ({})\naccount:\t{}\n\nContinue? (y/n) ".format(
             user_name, user_id, account))
+        logger.info("Uninstalling plugin '{}'".format(self.plugin_name))
         if not inp.lower() == ('y' or 'yes'):
             return CliResponse(None, 'aborted', QHExit.ABORTED)
         logger.info("destroying remaining apps")
-        AWSApp.destroy_all()
+        AWSApp.destroy_all(yes=True)
         logger.info("destroying networking")
         AWSNetworking(
             app_name=params['app_name'],
@@ -306,7 +307,15 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
         }, indent=3), None, QHExit.OK)
 
     @classmethod
-    def destroy_all(self):
+    def destroy_all(self, yes=False):
+        logger.info("Destroy all {} apps".format(self.plugin_name))
+        if not yes:
+            print("You are about to remove all apps associated with the {} plugin.".format(self.plugin_name))
+            are_you_sure = input("Are you sure? (y/N): ")
+            if are_you_sure not in ["y", "Y", "yes", "YES"]:
+                logger.info("User aborted.")
+                return CliResponse("Aborted", '', 0)
+
         apps = AWSHost(
             app_name="destroy-all",
             profile=AWSConstants.DEFAULT_IAM_USER,
