@@ -16,8 +16,11 @@
 import logging
 
 import boto3
+from botocore import exceptions as botocore_exceptions
+from .utilities import QuickhostAWSException
 
 from .constants import AWSConstants
+
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +31,11 @@ class AWSResourceBase:
     """
 
     def _get_session(self, profile=AWSConstants.DEFAULT_IAM_USER, region=AWSConstants.DEFAULT_REGION) -> boto3.Session:
-        session = boto3.session.Session(profile_name=profile, region_name=region)
-        return session
+        try:
+            return boto3.session.Session(profile_name=profile, region_name=region)
+        except botocore_exceptions.ProfileNotFound:
+            logger.critical("No such profile '{}' found in your aws config".format(profile))
+            raise QuickhostAWSException("No such profile '{}'".format(profile))
 
     def get_caller_info(self, profile, region):
         session = self._get_session(profile=profile, region=region)

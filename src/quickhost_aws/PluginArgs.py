@@ -73,10 +73,9 @@ class AWSParser(ParserBase):
     def add_init_parser_arguments(self, parser: ArgumentParser):
         parser.add_argument(
             "--profile",
-            required=False,
+            required=True,
             action='store',
-            default=AWSConstants.DEFAULT_IAM_USER,
-            help="Profile of an admin AWS account used to create initial quickhost resources")
+            help="Profile of an admin-like AWS user which will create initial quickhost resources")
         parser.add_argument(
             "--region",
             required=False,

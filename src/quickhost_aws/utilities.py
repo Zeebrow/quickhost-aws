@@ -110,6 +110,9 @@ def quickmemo(f):
     return foo
 
 
+class QuickhostAWSException(Exception):
+    pass
+
 # @@@ remove unhelpful docstrings
 class QuickhostUnauthorized(Exception):
     """

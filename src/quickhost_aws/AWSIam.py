@@ -56,6 +56,7 @@ class Iam(AWSResourceBase):
             "iam_user_arn": None,
             "iam_group_arn": None,
         }
+        # @@@ unreachable ???
         if self.caller_info['username'] == AWSConstants.DEFAULT_IAM_USER:
             logger.warning("The default quickhost user is not allowed to 'init'!")
             raise QuickhostUnauthorized("The default quickhost user is not allowed to 'init'!", operation='app init')

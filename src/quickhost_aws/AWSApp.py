@@ -19,6 +19,7 @@ from pathlib import Path
 import json
 import yaml
 from textwrap import dedent
+import sys
 
 import boto3
 
@@ -32,7 +33,7 @@ from .AWSHost import AWSHost
 from .AWSKeypair import KP
 from .AWSNetworking import AWSNetworking
 from .constants import AWSConstants
-from .utilities import QuickhostUnauthorized, Arn
+from .utilities import QuickhostUnauthorized, Arn, QuickhostAWSException
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,17 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
     plugin_name = 'aws'
 
     def __init__(self, app_name):
+    # NOTE: If `quickhost aws init` has not been run prior to attempting an action, uncommenting below may produce
+    # an debug message...
+    #  2023-03-19 10:11:29,901 : botocore.utils : _get_request : DEBUG: Caught
+    #  retryable HTTP exception while making metadata service request to
+    #  http://169.254.169.254/latest/meta-data/iam/security-credentials/:
+    #  Connect timeout on endpoint URL:
+    #  "http://169.254.169.254/latest/meta-data/iam/security-credentials/"
+    # ...plus an exceptions  chain
+    #
+    # import boto3
+    # boto3.set_stream_logger('botocore', level='DEBUG')
         self.app_name = app_name
         self._client = boto3.client('ec2')
         self._ec2_resource = boto3.resource('ec2')
@@ -68,15 +80,21 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
         self.vpc_id = None
         self.subnet_id = None
         self.sgid = None
-        # self.load_default_config()
 
     def load_default_config(self, cache_ok=True, region=AWSConstants.DEFAULT_REGION, profile=AWSConstants.DEFAULT_IAM_USER):
         logger.debug("load default config")
-        networking_params = AWSNetworking(
-            app_name=self.app_name,
-            region=region,
-            profile=profile
-        ).describe(use_cache=cache_ok)
+        try:
+            networking = AWSNetworking(
+                app_name=self.app_name,
+                region=region,
+                profile=profile
+            )
+        except QuickhostAWSException as e:
+            sys.stderr.write("{}\nHave you run 'quickhost aws init' yet?\n".format(e))
+            # @@ bad design 101
+            raise SystemExit(2)
+
+        networking_params = networking.describe(use_cache=cache_ok)
         logger.debug("networking params: {}".format(networking_params))
         session: boto3.Session = boto3.session.Session(profile_name=profile, region_name=region)
         sts_client = session.client('sts')
@@ -185,13 +203,14 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
         user_id = whoami['UserId']
         account = whoami['Account']
         confirmation_line = dedent(f"""\
+            Initializing quickhost with the following parameters:
             Target account:     {whoami['Account']}
             Home Region:        {init_args['region']}
             Calling user:       {user_name}
             Calling profile:    {whoami['profile']}
         """)
         print(confirmation_line)
-        inp = input("About to initialize quickhost using:\nuser:\t\t{} ({})\naccount:\t{}\n\nContinue? (y/n) ".format(
+        inp = input("Continue? (y/N) ".format(
             user_name, user_id, account))
         if not inp.lower() == ('y' or 'yes'):
             return CliResponse(None, 'aborted', QHExit.ABORTED)
@@ -203,6 +222,7 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
         except QuickhostUnauthorized as e:
             finished_with_errors = True
             logger.error(f"Failed to create initial IAM resources: {e}")
+
         networking_params = AWSNetworking(
             app_name=self.app_name,
             profile=init_args['profile'],
