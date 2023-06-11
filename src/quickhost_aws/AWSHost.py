@@ -1,3 +1,4 @@
+import json
 # Copyright (C) 2022 zeebrow
 #
 # This program is free software: you can redistribute it and/or modify
@@ -140,13 +141,13 @@ class AWSHost(AWSResourceBase):
             logger.debug(f"match {_os}")
             match _os:
                 case "ubuntu":
-                    ssh_strings.append(f"ssh -i {ssh_key_filepath} ubuntu@{inst['public_ip']}")
+                    ssh_strings.append(f"ssh -i {ssh_key_filepath} ubuntu@{inst.public_ip}")
                 case "amazon-linux-2":
-                    ssh_strings.append(f"ssh -i {ssh_key_filepath} ec2-user@{inst['public_ip']}")
+                    ssh_strings.append(f"ssh -i {ssh_key_filepath} ec2-user@{inst.public_ip}")
                 case "windows":
-                    ssh_strings.append(f"*{inst['public_ip']}")
+                    ssh_strings.append(f"*{inst.public_ip}")
                 case "windows-core":
-                    ssh_strings.append(f"*{inst['public_ip']}")
+                    ssh_strings.append(f"*{inst.public_ip}")
                 case _:
                     logger.warning(f"invalid os '{_os}'")
         [ print(f"host {i}) {ssh}") for i, ssh in enumerate(ssh_strings) ]
@@ -245,7 +246,8 @@ class AWSHost(AWSResourceBase):
             for host in r['Instances']:
                 app_instances.append(quickhost.scrub_datetime(host))
                 inst = self._parse_host_output(host=host)
-                instance_ids.append(inst['instance_id'])
+                #instance_ids.append(inst['instance_id'])
+                instance_ids.append(inst.instance_id)
         if len(app_instances) == 0:
             return None
         else:
@@ -314,11 +316,11 @@ class AWSHost(AWSResourceBase):
     def _parse_host_output(self, host: dict, none_val=None) -> HostsDescribe:
         """
         Parse the output of boto3's "ec2.describe_instances()" Reservations.Instances for data.
-        If a property cannot be retrieved, it will be replaced with `none_val`.
+        If a property cannot be retrieved, it will be None.
         """
-        none_val = None
         # @@@ E731 I want test cases first
-        _try_get_attr = lambda d, attr: d[attr] if attr in d.keys() else none_val  # noqa: E731
+        # @@@ update: too bad
+        _try_get_attr = lambda d, attr: d[attr] if attr in d.keys() else None  # noqa: E731
         return HostsDescribe(
             app_name=self.app_name,
             ami=_try_get_attr(host, 'ImageId'),

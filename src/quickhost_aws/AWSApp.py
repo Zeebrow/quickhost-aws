@@ -279,19 +279,19 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
             profile=params['profile'],
         )
         hosts_describe = hosts.describe()
-        logger.debug(hosts_describe)
+        logger.debug(f"{hosts_describe=}")
         passwords = {}
-        if hosts_describe is not None:
+        if len(hosts_describe) != 0:
             for h in hosts_describe:
-                if h['platform'] in ['Windows',]:
+                if h.platform in ['Windows',]:
                     if params['show_password']:
-                        passwords[h['instance_id']] = kp.windows_get_password(h['instance_id'])
+                        passwords[h.instance_id] = kp.windows_get_password(h.instance_id)
                     else:
-                        passwords[h['instance_id']] = '*****************************'
+                        passwords[h.instance_id] = '*****************************'
             for h in hosts_describe:
                 for inst_id, pw in passwords.items():
-                    if inst_id == h['instance_id']:
-                        h['password'] = pw
+                    if inst_id == h.instance_id:
+                        h.password = pw
 
         caller_info = {
             'account': self.account,
@@ -301,14 +301,28 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
         self._print_loaded_args(networking_params, heading="global params")
         self._print_loaded_args(caller_info)
         self._print_loaded_args(iam_vals)
-        print('*********************************************************')
+        print('security groups:')
         self._print_loaded_args(sg_describe)
+        print('keypair:')
         self._print_loaded_args(kp_describe)
+        print('*********************************************************')
+
         if hosts_describe is None:
             logger.warning("No hosts found for app " + self.app_name)
         else:
             for i, host in enumerate(hosts_describe):
-                self._print_loaded_args(host, heading=f"host {i}")
+                self._print_loaded_args(host.__dict__, heading=f"host {i}")
+        sys.stdout.write("\033[32m{}\033[0m".format('ssh:') + "\n")
+        print(f"ssh -i {kp_describe['ssh_key_filepath']} ec2-user@{h.public_ip}")
+        print()
+        sys.stdout.write("\033[32m{}\033[0m".format('ansible:') + "\n")
+        print(dedent(f"""\
+            [{h.app_name}]
+            {h.public_ip}
+            [{h.app_name}:vars]
+            ansible_user=ec2_user
+            ansible_ssh_private_key_file={kp_describe['ssh_key_filepath']}
+        """))
         if kp_describe and hosts_describe and sg_describe:
             return CliResponse('Done', None, QHExit.OK)
         else:
@@ -378,7 +392,8 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
         kp = KP(app_name=self.app_name, region=params['region'], profile=profile)
         sg = SG(app_name=self.app_name, region=params['region'], profile=profile, vpc_id=self.vpc_id)
         host = AWSHost(app_name=self.app_name, region=params['region'], profile=profile)
-        if host.describe() is not None:
+        print(host.describe())
+        if host.describe() != []:
             logger.error(f"app named '{self.app_name}' already exists")
             return CliResponse(None, f"app named '{self.app_name}' already exists", QHExit.ABORTED)
 

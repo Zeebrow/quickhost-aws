@@ -8,3 +8,4 @@ venv*
 *.sw?
 src/quickhost_aws/data
 tests
+upload-to-devpi.sh
