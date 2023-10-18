@@ -279,7 +279,7 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
             profile=params['profile'],
         )
         hosts_describe = hosts.describe()
-        logger.debug(f"{hosts_describe=}")
+        logger.debug("hosts_describe={}".format(hosts_describe))
         passwords = {}
         if len(hosts_describe) != 0:
             for h in hosts_describe:
@@ -416,7 +416,9 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
         if kp_created and hosts_created is not None and sg_created:
             return CliResponse('Done', None, QHExit.OK)
         else:
-            return CliResponse('finished creating hosts with warnings', f"{kp_created=}, {hosts_created=}, {sg_created=}", QHExit.GENERAL_FAILURE)
+            return CliResponse('finished creating hosts with warnings', "kp_created={}, hosts_created={}, sg_created={}".format(
+                kp_created, hosts_created, sg_created
+            ), QHExit.GENERAL_FAILURE)
 
     def update(self, args: dict) -> CliResponse:
         raise Exception("TODO")
@@ -452,7 +454,9 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
         if kp_destroyed and hosts_destroyed and sg_destroyed:
             return CliResponse('Done', '', QHExit.OK)
         else:
-            return CliResponse('finished destroying hosts with errors', f"{kp_destroyed=}, {hosts_destroyed=}, {sg_destroyed=}", QHExit.GENERAL_FAILURE)
+            return CliResponse('finished destroying hosts with errors', "kp_destroyed={}, hosts_destroyed={}, sg_destroyed={}}".format(
+                kp_destroyed, hosts_destroyed, sg_destroyed
+            ), QHExit.GENERAL_FAILURE)
 
     def _parse_make(self, input_args: dict):
         """

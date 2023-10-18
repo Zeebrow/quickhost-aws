@@ -153,7 +153,7 @@ class AWSNetworking(AWSResourceBase):
             route_table.reload()
             if route_table.associations_attribute[0]['SubnetId'] == self.subnet_id and route_table.associations_attribute[0]['AssociationState']['State'] == "associated":
                 rt_ok = f"Associated with subnet {self.subnet_id}"
-            logger.info(f"Created Route Table. {self.rt_id=} ({rt_ok})")
+            logger.info("Created Route Table. self.rt_id={} ({})".format(self.rt_id, rt_ok))
         else:
             rt_ok = 'Check association'
             route_table = self.ec2.RouteTable(self.rt_id)

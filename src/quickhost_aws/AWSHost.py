@@ -14,7 +14,7 @@ import json
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import List, Any
+import typing as t
 import time
 import logging
 from datetime import datetime
@@ -139,21 +139,20 @@ class AWSHost(AWSResourceBase):
         for i in app_insts_thingy:
             inst = self._parse_host_output(i)
             logger.debug(f"match {_os}")
-            match _os:
-                case "ubuntu":
-                    ssh_strings.append(f"ssh -i {ssh_key_filepath} ubuntu@{inst.public_ip}")
-                case "amazon-linux-2":
-                    ssh_strings.append(f"ssh -i {ssh_key_filepath} ec2-user@{inst.public_ip}")
-                case "windows":
-                    ssh_strings.append(f"*{inst.public_ip}")
-                case "windows-core":
-                    ssh_strings.append(f"*{inst.public_ip}")
-                case _:
-                    logger.warning(f"invalid os '{_os}'")
+            if _os == "ubuntu":
+                ssh_strings.append(f"ssh -i {ssh_key_filepath} ubuntu@{inst.public_ip}")
+            elif _os == "amazon-linux-2":
+                ssh_strings.append(f"ssh -i {ssh_key_filepath} ec2-user@{inst.public_ip}")
+            elif _os == "windows":
+                ssh_strings.append(f"*{inst.public_ip}")
+            elif _os == "windows-core":
+                ssh_strings.append(f"*{inst.public_ip}")
+            else:
+                logger.warning(f"invalid os '{_os}'")
         [ print(f"host {i}) {ssh}") for i, ssh in enumerate(ssh_strings) ]
         return rtn
 
-    def describe(self) -> List[HostsDescribe]:
+    def describe(self) -> t.List[HostsDescribe]:
         # @@@ get ssh+key_filepath from host tag
         logger.debug("AWSHost.describe")
         instances = []
@@ -195,7 +194,7 @@ class AWSHost(AWSResourceBase):
         return self.wait_for_hosts_to_terminate(tgt_instances=tgt_instances)
 
     @classmethod
-    def get_all_running_apps(self, region) -> List[Any] | None:
+    def get_all_running_apps(self, region) -> t.Optional[t.List[t.Any]]:
         session = boto3.session.Session(profile_name=AWSConstants.DEFAULT_IAM_USER, region_name=region)
         client = session.client('ec2')
 
@@ -227,7 +226,7 @@ class AWSHost(AWSResourceBase):
                     _rtn.append(k)
             return _rtn
 
-    def _get_app_instances(self) -> List[Any] | None:
+    def _get_app_instances(self) -> t.Optional[t.List[t.Any]]:
         """
         TODO: Create a type to replace List[Any]
         NOTE: to get 'describe' data, feed the output of this into self._parse_host_output()
@@ -255,7 +254,7 @@ class AWSHost(AWSResourceBase):
 
     def get_instance_ids(self, *states):
         """Given the app_name, returns the instance id off all instances with a State of 'running'"""
-        logger.debug(f"{states=}")
+        logger.debug("states={}".format(states))
         app_instances = []
         all_hosts = self.client.describe_instances(
             Filters=[
@@ -287,20 +286,19 @@ class AWSHost(AWSResourceBase):
             _new_filter('state', 'available'),
             _new_filter('architecture', 'x86_64'),
         ]
-        match os:
-            case 'al2023':
-                filterset.append(_new_filter('name', 'al2023-ami-2023.*-kernel-6.?-x86_64'))
-            case 'amazon-linux-2':
-                #e.g. amzn2-ami-hvm-2.0.20230307.0-x86_64-gp2
-                filterset.append(_new_filter('name', 'amzn2-ami-hvm-2.0.*-x86_64-gp2'),)
-            case 'ubuntu':
-                filterset.append(_new_filter('name', '*ubuntu*22.04*'),)
-            case 'windows':
-                filterset.append(_new_filter('name', 'Windows_Server-2022-English-Full-Base*'),)
-            case 'windows-core':
-                filterset.append(_new_filter('name', 'Windows_Server-2022-English-Core-Base*'),)
-            case _:
-                raise Exception(f"no such image type '{os}'")
+        if os == 'al2023':
+            filterset.append(_new_filter('name', 'al2023-ami-2023.*-kernel-6.?-x86_64'))
+        elif os == 'amazon-linux-2':
+            #e.g. amzn2-ami-hvm-2.0.20230307.0-x86_64-gp2
+            filterset.append(_new_filter('name', 'amzn2-ami-hvm-2.0.*-x86_64-gp2'),)
+        elif os == 'ubuntu':
+            filterset.append(_new_filter('name', '*ubuntu*22.04*'),)
+        elif os == 'windows':
+            filterset.append(_new_filter('name', 'Windows_Server-2022-English-Full-Base*'),)
+        elif os == 'windows-core':
+            filterset.append(_new_filter('name', 'Windows_Server-2022-English-Core-Base*'),)
+        else:
+            raise Exception(f"no such image type '{os}'")
         response = self.client.describe_images(
             Filters=filterset,
             IncludeDeprecated=False,
@@ -376,17 +374,16 @@ class AWSHost(AWSResourceBase):
             for r in app_hosts['Reservations']:
                 for host in r['Instances']:
                     if host['InstanceId'] in tgt_instances:
-                        match host['State']['Name']:
-                            case 'terminated':
-                                if not (host['InstanceId'] in ready_hosts):
-                                    ready_hosts.append(host['InstanceId'])
-                            case 'shutting-down':
-                                if not (host['InstanceId'] in waiting_on_hosts):
-                                    waiting_on_hosts.append(host['InstanceId'])
-                            case _:
-                                if not (host['InstanceId'] in other_hosts):
-                                    other_hosts.append(host['InstanceId'])
-                                # @@@
+                        if host['State']['Name'] == 'terminated':
+                            if not (host['InstanceId'] in ready_hosts):
+                                ready_hosts.append(host['InstanceId'])
+                        elif host['State']['Name'] == 'shutting-down':
+                            if not (host['InstanceId'] in waiting_on_hosts):
+                                waiting_on_hosts.append(host['InstanceId'])
+                        else:
+                            if not (host['InstanceId'] in other_hosts):
+                                other_hosts.append(host['InstanceId'])
+                            # @@@
             print(f"""other: {other_hosts} ({len(ready_hosts)}/{tgt_count}) Ready: {ready_hosts} Waiting: {waiting_on_hosts}\r""", end='')
             if len(ready_hosts) == tgt_count:
                 print()
@@ -413,26 +410,25 @@ class AWSHost(AWSResourceBase):
             ))
             for r in app_hosts['Reservations']:
                 for host in r['Instances']:
-                    match host['State']['Name']:
-                        case 'running':
-                            if not (host['InstanceId'] in ready_hosts):
-                                if host['InstanceId'] in waiting_on_hosts:  # should always be True
-                                    ready_hosts.append(host['InstanceId'])
-                                    waiting_on_hosts.remove(host['InstanceId'])
-                        case 'pending':
-                            if not (host['InstanceId'] in waiting_on_hosts):
-                                waiting_on_hosts.append(host['InstanceId'])
-                        case _:
-                            if not (host['InstanceId'] in other_hosts):
-                                logger.debug("HERE BUG")
-                                other_hosts.append(host['InstanceId'])
+                    if host['State']['Name'] ==  'running':
+                        if not (host['InstanceId'] in ready_hosts):
+                            if host['InstanceId'] in waiting_on_hosts:  # should always be True
+                                ready_hosts.append(host['InstanceId'])
+                                waiting_on_hosts.remove(host['InstanceId'])
+                    elif host['State']['Name'] == 'pending':
+                        if not (host['InstanceId'] in waiting_on_hosts):
+                            waiting_on_hosts.append(host['InstanceId'])
+                    else:
+                        if not (host['InstanceId'] in other_hosts):
+                            logger.debug("HERE BUG")
+                            other_hosts.append(host['InstanceId'])
             print("other: {} ({}/{}) Ready: {} Waiting: ({}): {}\r".format(
                 other_hosts, len(ready_hosts), tgt_count, ready_hosts, len(waiting_on_hosts), waiting_on_hosts
             ), end='')
             time.sleep(1)
     
 
-def _new_filter(name: str, values: list | str):
+def _new_filter(name: str, values: t.Union[t.List, str]):
     if (isinstance(values, str)):
         return {'Name': name, 'Values': [values]}
     elif (isinstance(values, list)):
