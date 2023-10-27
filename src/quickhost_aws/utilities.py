@@ -151,3 +151,12 @@ class Arn:
         if type(arn) != str or not arn.startswith("arn:") or len(arn.split(":")) != 6:
             return False
         return True
+
+def get_my_public_ip() -> str:
+    try:
+        import urllib
+        with urllib.request.urlopen("https://ipv4.icanhazip.com") as r:
+            html = r.read()
+            return html.decode('utf-8').strip() + "/32"
+    except Exception:
+        return input('Could not determine your public ip address (are you connected to the internet?). Enter it here (Ctrl^C to cancel): ')

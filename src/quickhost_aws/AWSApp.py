@@ -17,14 +17,12 @@ import logging
 import os
 from pathlib import Path
 import json
-import yaml
 from textwrap import dedent
 import sys
 
 import boto3
 
-import quickhost
-from quickhost import QHExit, CliResponse
+from quickhost import QHExit, CliResponse, AppBase
 
 from .AWSResource import AWSResourceBase
 from .AWSIam import Iam
@@ -33,12 +31,12 @@ from .AWSHost import AWSHost
 from .AWSKeypair import KP
 from .AWSNetworking import AWSNetworking
 from .constants import AWSConstants
-from .utilities import QuickhostUnauthorized, Arn, QuickhostAWSException
+from .utilities import QuickhostUnauthorized, Arn, QuickhostAWSException, get_my_public_ip
 
 logger = logging.getLogger(__name__)
 
 
-class AWSApp(quickhost.AppBase, AWSResourceBase):
+class AWSApp(AppBase, AWSResourceBase):
     """
     AWSApp
     Sort-of a dataclass, sort-of not.  I've tried putting all the 'None'
@@ -85,7 +83,6 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
         logger.debug("load default config")
         try:
             networking = AWSNetworking(
-                app_name=self.app_name,
                 region=region,
                 profile=profile
             )
@@ -224,7 +221,6 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
             logger.error(f"Failed to create initial IAM resources: {e}")
 
         networking_params = AWSNetworking(
-            app_name=self.app_name,
             profile=init_args['profile'],
             region=init_args['region'],
         )
@@ -236,12 +232,6 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
             finished_with_errors = True
             logger.error(e, exc_info=True)
 
-        print(yaml.dump({
-            "quickhost": {
-                **created_iam_resources,
-                **created_networking_resources
-            }
-        }))
         if finished_with_errors:  # @@@
             return CliResponse('finished init with errors', "<placeholder>", QHExit.GENERAL_FAILURE)
         else:
@@ -488,7 +478,7 @@ class AWSApp(quickhost.AppBase, AWSResourceBase):
         # cidrs ingress
         # always add public ip
         make_params['cidrs'] = []
-        make_params['cidrs'].append(quickhost.get_my_public_ip())
+        make_params['cidrs'].append(get_my_public_ip())
         if input_args['ip'] is not None:
             for i in input_args['ip']:
                 if len(i.split('/')) == 1:

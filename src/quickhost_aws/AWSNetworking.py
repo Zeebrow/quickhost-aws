@@ -39,10 +39,9 @@ class AWSNetworking(AWSResourceBase):
     # TypeError: AWSNetworking.TagSpec() takes 1 positional argument but 2 were given
     # @classmethod # 
     def TagSpec(resource):
-        return { 'ResourceType': resource, 'Tags': [ AWSNetworking.DefaultTag ] }
+        return { 'ResourceType': resource, 'Tags': [ { 'Value': C.DEFAULT_APP_NAME, 'Key': 'Name' } ] }
 
-    def __init__(self, app_name, profile, region, dry_run=False):
-        self.app_name = app_name
+    def __init__(self, profile, region, dry_run=False):
         session = self._get_session(profile=profile, region=region)
         self.client = session.client('ec2')
         self.ec2 = session.resource('ec2')
