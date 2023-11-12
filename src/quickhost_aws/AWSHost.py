@@ -1,4 +1,3 @@
-import json
 # Copyright (C) 2022 zeebrow
 #
 # This program is free software: you can redistribute it and/or modify
@@ -77,8 +76,9 @@ class AWSHost(AWSResourceBase):
 
         self.host_count = num_hosts
         rtn['num_hosts'] = num_hosts
+# @@@ this is the only place get_host_count is used, can we get rid of this and call self.describe() up top like all the other kids?
         if self.get_host_count() > 0:
-            logger.error(f"Hosts for app '{self.app_name}' already exist")
+            logger.error("Hosts for app '%s' already exist", self.app_name)
             return None
         run_instances_params = {
             'ImageId': image_id,
@@ -114,7 +114,7 @@ class AWSHost(AWSResourceBase):
 
         if disk_size is not None:
             if disk_size < latest_image['ami_disk_size']:
-                logger.warning("Requested dist size of {} GiB is smaller than the ami disk size ({}), using ami disk size instead.".format(disk_size, latest_image['disk_size']))
+                logger.warning("Requested dist size of %s GiB is smaller than the ami disk size (%s), using ami disk size instead.", disk_size, latest_image['disk_size'])
                 tgt_disk_size = latest_image['ami_disk_size']
             else:
                 tgt_disk_size = disk_size
@@ -138,22 +138,21 @@ class AWSHost(AWSResourceBase):
         app_insts_thingy = self._get_app_instances()
         for i in app_insts_thingy:
             inst = self._parse_host_output(i)
-            logger.debug(f"match {_os}")
+            logger.debug("match %s", _os)
             if _os == "ubuntu":
                 ssh_strings.append(f"ssh -i {ssh_key_filepath} ubuntu@{inst.public_ip}")
-            elif _os == "amazon-linux-2":
+            elif _os in ["amazon-linux-2", "al2023"]:
                 ssh_strings.append(f"ssh -i {ssh_key_filepath} ec2-user@{inst.public_ip}")
             elif _os == "windows":
                 ssh_strings.append(f"*{inst.public_ip}")
             elif _os == "windows-core":
                 ssh_strings.append(f"*{inst.public_ip}")
             else:
-                logger.warning(f"invalid os '{_os}'")
+                logger.warning("invalid os '%s'", _os)
         [ print(f"host {i}) {ssh}") for i, ssh in enumerate(ssh_strings) ]
         return rtn
 
     def describe(self) -> t.List[HostsDescribe]:
-        # @@@ get ssh+key_filepath from host tag
         logger.debug("AWSHost.describe")
         instances = []
         try:
@@ -170,7 +169,7 @@ class AWSHost(AWSResourceBase):
                     if host['State']['Name'] in ['running', 'pending']:
                         instances.append(self._parse_host_output(host=host))
         except ClientError as e:
-            logger.error(f"(Security Group) Unhandled botocore client exception: ({e.response['Error']['Code']}): {e.response['Error']['Message']}")
+            logger.error("(Security Group) Unhandled botocore client exception: (%s): %s", e.response['Error']['Code'], e.response['Error']['Message'])
             raise e
         if len(instances) == 0:
             return []
@@ -181,7 +180,7 @@ class AWSHost(AWSResourceBase):
         logger.debug("destroying instnaces: ")
         tgt_instances = self.get_instance_ids('running')
         if tgt_instances is None:
-            logger.debug(f"No instances found for app '{self.app_name}'")
+            logger.debug("No instances found for app '%s'", self.app_name)
             return None
         try:
             response = self.client.terminate_instances(
@@ -191,10 +190,13 @@ class AWSHost(AWSResourceBase):
         except ClientError as e:
             logger.error(e)
             return False
-        return self.wait_for_hosts_to_terminate(tgt_instances=tgt_instances)
+        return self.wait_for_hosts_to_terminate(tgt_instance_ids=tgt_instances)
 
     @classmethod
     def get_all_running_apps(self, region) -> t.Optional[t.List[t.Any]]:
+        """
+        Search for all EC2 instances in the region, with a tag Name of 'quickhost', collect the tags' values into a list, and return it.
+        """
         session = boto3.session.Session(profile_name=AWSConstants.DEFAULT_IAM_USER, region_name=region)
         client = session.client('ec2')
 
@@ -213,6 +215,7 @@ class AWSHost(AWSResourceBase):
                     if t['Key'] == 'Name':
                         app_names.append(t['Value'])
         if len(app_names) == 0:
+            logger.debug("no running apps found.")
             return None
         else:
             app_name_count = defaultdict(int)
@@ -224,11 +227,12 @@ class AWSHost(AWSResourceBase):
                     _rtn.append("{} ({})".format(k, v))
                 else:
                     _rtn.append(k)
+            logger.debug("%s running apps found.", len(_rtn))
             return _rtn
 
     def _get_app_instances(self) -> t.Optional[t.List[t.Any]]:
         """
-        TODO: Create a type to replace List[Any]
+        TODO: WHy is this optional??
         NOTE: to get 'describe' data, feed the output of this into self._parse_host_output()
         """
         app_instances = []
@@ -245,16 +249,13 @@ class AWSHost(AWSResourceBase):
             for host in r['Instances']:
                 app_instances.append(quickhost.scrub_datetime(host))
                 inst = self._parse_host_output(host=host)
-                #instance_ids.append(inst['instance_id'])
                 instance_ids.append(inst.instance_id)
-        if len(app_instances) == 0:
-            return None
         else:
             return app_instances
 
     def get_instance_ids(self, *states):
         """Given the app_name, returns the instance id off all instances with a State of 'running'"""
-        logger.debug("states={}".format(states))
+        logger.debug("states=%s", states)
         app_instances = []
         all_hosts = self.client.describe_instances(
             Filters=[
@@ -313,23 +314,20 @@ class AWSHost(AWSResourceBase):
 
     def _parse_host_output(self, host: dict, none_val=None) -> HostsDescribe:
         """
-        Parse the output of boto3's "ec2.describe_instances()" Reservations.Instances for data.
+        Marshal the output of boto3's "ec2.describe_instances()" Reservations.Instances into a python class.
         If a property cannot be retrieved, it will be None.
         """
-        # @@@ E731 I want test cases first
-        # @@@ update: too bad
-        _try_get_attr = lambda d, attr: d[attr] if attr in d.keys() else None  # noqa: E731
         return HostsDescribe(
             app_name=self.app_name,
-            ami=_try_get_attr(host, 'ImageId'),
-            security_group=_try_get_attr(host, 'SecurityGroups')[0]['GroupId'],
-            instance_id=_try_get_attr(host, 'InstanceId'),
-            instance_type=_try_get_attr(host, 'InstanceType'),
-            public_ip=_try_get_attr(host, 'PublicIpAddress'),
-            subnet_id=_try_get_attr(host, 'SubnetId'),
-            vpc_id=_try_get_attr(host, 'VpcId'),
+            ami=host.get('ImageId'),
+            security_group=host.get('SecurityGroups')[0]['GroupId'],  # @@@ you can do better
+            instance_id=host.get('InstanceId'),
+            instance_type=host.get('InstanceType'),
+            public_ip=host.get('PublicIpAddress'),
+            subnet_id=host.get('SubnetId'),
+            vpc_id=host.get('VpcId'),
             state=host['State']['Name'],
-            platform=_try_get_attr(host, 'PlatformDetails'),
+            platform=host.get('PlatformDetails'),
         )
 
     def get_userdata(self, filename: str):
@@ -349,19 +347,19 @@ class AWSHost(AWSResourceBase):
         ))
         count = 0
         for r in app_hosts['Reservations']:
-            logger.debug(f"got {len(r['Instances'])} instances")
+            logger.debug("got %s instances", len(r['Instances']))
             for host in r['Instances']:
                 if host['State']['Name'] == 'running':
                     count += 1
         return count
 
-    def wait_for_hosts_to_terminate(self, tgt_instances):
-        """'blocks' until hosts tagged 'app_name' have a State Name of 'running'"""
+    def wait_for_hosts_to_terminate(self, tgt_instance_ids):
+        """blocks until polling describe_instances() produces a lost of hosts whose State.Name is 'terminated'"""
         print(f"===================Waiting on hosts for '{self.app_name}'=========================")
         ready_hosts = []
         waiting_on_hosts = []
         other_hosts = []
-        tgt_count = len(tgt_instances)
+        tgt_count = len(tgt_instance_ids)
         while True:
             app_hosts = quickhost.scrub_datetime(self.client.describe_instances(
                 Filters=[
@@ -373,7 +371,7 @@ class AWSHost(AWSResourceBase):
             ))
             for r in app_hosts['Reservations']:
                 for host in r['Instances']:
-                    if host['InstanceId'] in tgt_instances:
+                    if host['InstanceId'] in tgt_instance_ids:
                         if host['State']['Name'] == 'terminated':
                             if not (host['InstanceId'] in ready_hosts):
                                 ready_hosts.append(host['InstanceId'])
@@ -383,7 +381,6 @@ class AWSHost(AWSResourceBase):
                         else:
                             if not (host['InstanceId'] in other_hosts):
                                 other_hosts.append(host['InstanceId'])
-                            # @@@
             print(f"""other: {other_hosts} ({len(ready_hosts)}/{tgt_count}) Ready: {ready_hosts} Waiting: {waiting_on_hosts}\r""", end='')
             if len(ready_hosts) == tgt_count:
                 print()
@@ -391,7 +388,7 @@ class AWSHost(AWSResourceBase):
             time.sleep(1)
 
     def wait_for_hosts_to_start(self, tgt_count):
-        """loops until a the specified hosts tagged as 'app_name' have a State Name of 'running'"""
+        """blocks until polling describe_instances() produces a lost of hosts whose State.Name is 'running'"""
         print(f"===================Waiting on hosts for '{self.app_name}'=========================")
         ready_hosts = []
         waiting_on_hosts = []

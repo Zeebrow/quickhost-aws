@@ -34,7 +34,7 @@ class AWSResourceBase:
         try:
             return boto3.session.Session(profile_name=profile, region_name=region)
         except botocore_exceptions.ProfileNotFound:
-            logger.critical("No such profile '{}' found in your aws config".format(profile))
+            logger.critical("No such profile '%s' found in your aws config", profile)
             raise QuickhostAWSException("No such profile '{}'".format(profile))
 
     def get_caller_info(self, profile, region):
@@ -47,22 +47,8 @@ class AWSResourceBase:
         whoami.pop('ResponseMetadata')
 
         if self._get_user_name_from_arn(whoami['Arn']) != AWSConstants.DEFAULT_IAM_USER:
-            logger.warning(f"You're about to do stuff with the non-quickhost user {whoami['Arn']}")
+            logger.warning("You're about to do stuff with the non-quickhost user %s", whoami['Arn'])
         return whoami
 
-    # def get_client(self, resource, profile, region):
-    #     session = self._get_session(profile=profile, region=region)
-    #     sts = session.client('sts')
-    #     whoami = sts.get_caller_identity()
-    #     whoami['username'] = self._get_user_name_from_arn(whoami['Arn'])
-    #     whoami['region'] = session.region_name
-    #     whoami['profile'] = session.profile_name
-    #     _ = whoami.pop('ResponseMetadata')
-
-    #     if self._get_user_name_from_arn(whoami['Arn']) != AWSConstants.DEFAULT_IAM_USER:
-    #         logger.warning(f"You're about to do stuff with the non-quickhost user {whoami['Arn']}")
-    #     return (whoami, session.client(resource))
-
-    # @@@ out-of-place
     def _get_user_name_from_arn(self, arn: str):
         return arn.split(":")[5].split("/")[-1]

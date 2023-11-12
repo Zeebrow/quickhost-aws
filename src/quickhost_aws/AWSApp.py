@@ -39,33 +39,14 @@ logger = logging.getLogger(__name__)
 class AWSApp(AppBase, AWSResourceBase):
     """
     AWSApp
-    Sort-of a dataclass, sort-of not.  I've tried putting all the 'None'
-    arguments that aren't an __init__() parameter into their own class, but I
-    found it to be a headache.  Although, it might be way more testable to have
-    a configuration class... I think we're past that point.
+    Implements quickhost.AppBase
 
-    Args need to be evaluated on their own terms, because context is so
-    important... e.g.
-    * 'ports' is not technically needed, but should be *settable* from CLI or
-    * Config 'ssh_key_filepath' is arguably not even a plugin argument
+    As parameters are gathered, they are stored as attributes.
     """
     plugin_name = 'aws'
 
     def __init__(self, app_name):
-    # NOTE: If `quickhost aws init` has not been run prior to attempting an action, uncommenting below may produce
-    # an debug message...
-    #  2023-03-19 10:11:29,901 : botocore.utils : _get_request : DEBUG: Caught
-    #  retryable HTTP exception while making metadata service request to
-    #  http://169.254.169.254/latest/meta-data/iam/security-credentials/:
-    #  Connect timeout on endpoint URL:
-    #  "http://169.254.169.254/latest/meta-data/iam/security-credentials/"
-    # ...plus an exceptions  chain
-    #
-    # import boto3
-    # boto3.set_stream_logger('botocore', level='DEBUG')
         self.app_name = app_name
-        self._client = boto3.client('ec2')
-        self._ec2_resource = boto3.resource('ec2')
         self.userdata = None
         self.ssh_key_filepath = None
         self.ami = None
@@ -88,11 +69,10 @@ class AWSApp(AppBase, AWSResourceBase):
             )
         except QuickhostAWSException as e:
             sys.stderr.write("{}\nHave you run 'quickhost aws init' yet?\n".format(e))
-            # @@ bad design 101
             raise SystemExit(2)
 
         networking_params = networking.describe(use_cache=cache_ok)
-        logger.debug("networking params: {}".format(networking_params))
+        logger.debug("networking params: %s", networking_params)
         session: boto3.Session = boto3.session.Session(profile_name=profile, region_name=region)
         sts_client = session.client('sts')
 
@@ -115,7 +95,6 @@ class AWSApp(AppBase, AWSResourceBase):
             print(heading)
             print(underline_char * len(heading))
 
-        # qualm pytest when running without -s
         if os.isatty(1):
             if os.get_terminal_size()[0] > 80:
                 termwidth = 40
@@ -133,15 +112,12 @@ class AWSApp(AppBase, AWSResourceBase):
         return None
 
     def plugin_destroy(self, plugin_destroy_args) -> CliResponse:
-        """
-        TODO: @@@ all regions
-        """
-        logger.info("Destroy plugin '{}'".format(self.plugin_name))
-        logger.debug("plugin destroy args {}".format(plugin_destroy_args))
+        """"""
+        logger.info("Destroy plugin '%s'", self.plugin_name)
+        logger.debug("plugin destroy args %s", plugin_destroy_args)
         params = {
             "app_name": "uninstall-quickhost-aws",
-            # "region": plugin_destroy_args['region'],  # @@@
-            "region": AWSConstants.DEFAULT_REGION,  # @@@
+            "region": AWSConstants.DEFAULT_REGION,
             "profile": plugin_destroy_args['profile'],
         }
         session = self._get_session(region=params['region'], profile=params['profile'])
@@ -153,28 +129,33 @@ class AWSApp(AppBase, AWSResourceBase):
         user_name = whoami['Arn'].split(":")[5].split("/")[-1]
         user_id = whoami['UserId']
         account = whoami['Account']
-        inp = input("About to destroy quickhost using:\nuser:\t\t{} ({})\naccount:\t{}\n\nContinue? (y/n) ".format(
+        inp = input("About to destroy quickhost and all associated apps using:\nuser:\t\t{} ({})\naccount:\t{}\n\nContinue? (y/n) ".format(
             user_name, user_id, account))
-        logger.info("Uninstalling plugin '{}'".format(self.plugin_name))
-        if not inp.lower() == ('y' or 'yes'):
+        logger.info("Uninstalling plugin '%s'", self.plugin_name)
+        if not inp.lower() in ('y', 'yes'):
+            logger.debug(inp)
             return CliResponse(None, 'aborted', QHExit.ABORTED)
+
         logger.info("destroying remaining apps")
         AWSApp.destroy_all(yes=True)
+
         logger.info("destroying networking")
         AWSNetworking(
             app_name=params['app_name'],
             region=params['region'],
             profile=params['profile']
         ).destroy()
+
+        logger.info("destroying iam resources")
         Iam(
             region=params['region'],
             profile=params['profile']
         ).destroy()
+        logger.info("done destroying all plugin resources")
 
         return CliResponse("Finished removing AWS resources from account '{}' in {}".format(
             account, params['region']), None, QHExit.OK)
 
-    # @@@ CliResponse
     def plugin_init(self, init_args: dict) -> CliResponse:
         """
         Setup the following:
@@ -184,7 +165,7 @@ class AWSApp(AppBase, AWSResourceBase):
         must be run as an admin-like user
         """
         logger.debug('run init')
-        logger.debug("init args {}".format(init_args))
+        logger.debug("init args %s", init_args)
         finished_with_errors = False
         params = {
             "region": init_args['region'],
@@ -207,18 +188,18 @@ class AWSApp(AppBase, AWSResourceBase):
             Calling profile:    {whoami['profile']}
         """)
         print(confirmation_line)
-        inp = input("Continue? (y/N) ".format(
-            user_name, user_id, account))
-        if not inp.lower() == ('y' or 'yes'):
+        inp = input("Continue? (y/N) ")
+        if not inp.lower() in ['yes', 'y']:
             return CliResponse(None, 'aborted', QHExit.ABORTED)
         qh_iam = Iam(**params)
         try:
             created_iam_resources = qh_iam.create()
             for k, v in created_iam_resources.items():
-                logger.info(f"{k} = {v}")
+                logger.info("%s = %s", k, v)
         except QuickhostUnauthorized as e:
             finished_with_errors = True
-            logger.error(f"Failed to create initial IAM resources: {e}")
+            logger.error("Failed to create initial IAM resources: %s", e)
+            return CliResponse(None, "Failed to create initial IAM resources using the profile '%s'. Are you allowed to?" % user_name, 1)
 
         networking_params = AWSNetworking(
             profile=init_args['profile'],
@@ -227,7 +208,7 @@ class AWSApp(AppBase, AWSResourceBase):
         try:
             created_networking_resources = networking_params.create()
             for k, v in created_networking_resources.items():
-                logger.info(f"{k} = {v}")
+                logger.info("%s = ", k, v)
         except Exception as e:
             finished_with_errors = True
             logger.error(e, exc_info=True)
@@ -237,19 +218,43 @@ class AWSApp(AppBase, AWSResourceBase):
         else:
             return CliResponse('Done', None, QHExit.OK)
 
-    # @@@ CliResponse
+
     def describe(self, args: dict) -> CliResponse:
         logger.debug('describe')
-        logger.debug("describe args {}".format(args))
+        logger.debug("describe args %s", args)
         params = args
         params['profile'] = AWSConstants.DEFAULT_IAM_USER
         networking_params = self.load_default_config(
             region=params['region']
         )
+
         iam_vals = Iam(
             region=params['region'],
             profile=params['profile'],
         ).describe()
+        logger.debug("iam_vals=%s",iam_vals)
+
+        fail_iam = not iam_vals['credentials']['credentials-exist']
+        fail_netw = not networking_params
+        fail_init = (fail_netw) or (fail_iam)
+
+        if fail_init:
+            if fail_netw and fail_iam:
+                return CliResponse(None, 'No networking resources or IAM resources found for quickhost. Try re-running quickhost aws init to resolve.', 1)
+            elif fail_netw and not fail_iam:
+                return CliResponse(None, 'No networking resources found for quickhost. Try re-running quickhost aws init to resolve.', 1)
+            elif not fail_netw and fail_iam:
+                return CliResponse(None, 'No IAM resources found for quickhost. Try re-running quickhost aws init to resolve.', 1)
+            else:
+                return CliResponse(None, 'Unknown error', 1)
+        else:
+            self._print_loaded_args({
+                'account': self.account,
+                'invoking user': '/'.join(self.user.split('/')[1:])
+            }, heading="you are")
+            self._print_loaded_args(networking_params, heading="global params")
+            self._print_loaded_args(iam_vals)
+
         sg = SG(
             app_name=self.app_name,
             region=params['region'],
@@ -257,19 +262,22 @@ class AWSApp(AppBase, AWSResourceBase):
             vpc_id=self.vpc_id,
         )
         sg_describe = sg.describe()
+        logger.debug("sg_describe=%s", sg_describe)
         kp = KP(
             app_name=self.app_name,
             region=params['region'],
             profile=params['profile'],
         )
         kp_describe = kp.describe()
+        logger.debug("kp_describe=%s",kp_describe)
         hosts = AWSHost(
             app_name=self.app_name,
             region=params['region'],
             profile=params['profile'],
         )
         hosts_describe = hosts.describe()
-        logger.debug("hosts_describe={}".format(hosts_describe))
+        logger.debug("hosts_describe=%s", hosts_describe)
+
         passwords = {}
         if len(hosts_describe) != 0:
             for h in hosts_describe:
@@ -283,14 +291,6 @@ class AWSApp(AppBase, AWSResourceBase):
                     if inst_id == h.instance_id:
                         h.password = pw
 
-        caller_info = {
-            'account': self.account,
-            'invoking user': '/'.join(self.user.split('/')[1:])
-        }
-        # idk man.
-        self._print_loaded_args(networking_params, heading="global params")
-        self._print_loaded_args(caller_info)
-        self._print_loaded_args(iam_vals)
         print('security groups:')
         self._print_loaded_args(sg_describe)
         print('keypair:')
@@ -298,27 +298,23 @@ class AWSApp(AppBase, AWSResourceBase):
         print('*********************************************************')
 
         if hosts_describe is None:
-            logger.warning("No hosts found for app " + self.app_name)
+            logger.warning("No hosts found for app '%s'", self.app_name)
         else:
-            for i, host in enumerate(hosts_describe):
-                self._print_loaded_args(host.__dict__, heading=f"host {i}")
-        sys.stdout.write("\033[32m{}\033[0m".format('ssh:') + "\n")
-        print(f"ssh -i {kp_describe['ssh_key_filepath']} ec2-user@{h.public_ip}")
-        print()
-        sys.stdout.write("\033[32m{}\033[0m".format('ansible:') + "\n")
-        print(dedent(f"""\
-            [{h.app_name}]
-            {h.public_ip}
-            [{h.app_name}:vars]
-            ansible_user=ec2_user
-            ansible_ssh_private_key_file={kp_describe['ssh_key_filepath']}
-        """))
-        if kp_describe and hosts_describe and sg_describe:
-            return CliResponse('Done', None, QHExit.OK)
-        else:
-            return CliResponse(None, "Check logs for errors", 1)
+            for i, h in enumerate(hosts_describe):
+                self._print_loaded_args(h.__dict__, heading=f"host {i}")
+                sys.stdout.write("\033[32m{}\033[0m".format('ssh:') + "\n")
+                print(f"ssh -i {kp_describe['ssh_key_filepath']} ec2-user@{h.public_ip}")
+                print()
+                sys.stdout.write("\033[32m{}\033[0m".format('ansible:') + "\n")
+                print(dedent(f"""\
+                    [{h.app_name}]
+                    {h.public_ip}
+                    [{h.app_name}:vars]
+                    ansible_user=ec2_user
+                    ansible_ssh_private_key_file={kp_describe['ssh_key_filepath']}
+                """))
+        return CliResponse('Done', None, QHExit.OK)
 
-    # @@@ need to get regions...
     @classmethod
     def list_all(self):
         return CliResponse(json.dumps({
@@ -331,39 +327,39 @@ class AWSApp(AppBase, AWSResourceBase):
         }, indent=3), None, QHExit.OK)
 
     @classmethod
-    def destroy_all(self, yes=False):
-        logger.info("Destroy all {} apps".format(self.plugin_name))
+    def destroy_all(cls, yes=False):
+        logger.info("Destroy all %s apps", cls.plugin_name)
         if not yes:
-            print("You are about to remove all apps associated with the {} plugin.".format(self.plugin_name))
+            print("You are about to remove all apps associated with the {} plugin.".format(cls.plugin_name))
             are_you_sure = input("Are you sure? (y/N): ")
             if are_you_sure not in ["y", "Y", "yes", "YES"]:
-                logger.info("User aborted.")
+                logger.info("aborted")
                 return CliResponse("Aborted", '', 0)
 
         apps = AWSHost(
             app_name="destroy-all",
             profile=AWSConstants.DEFAULT_IAM_USER,
-            region=AWSConstants.DEFAULT_REGION,  # @@@
-        ).get_all_running_apps(region=AWSConstants.DEFAULT_REGION)  # @@@
+            region=AWSConstants.DEFAULT_REGION,
+        ).get_all_running_apps(region=AWSConstants.DEFAULT_REGION)
         if apps is None:
             return CliResponse("Nothing to destroy.", None, QHExit.OK)
-        logger.info("Destroying {} apps".format(len(apps)))
+
+        logger.info("Destroying %s apps", len(apps))
         for a in apps:
-            app = AWSApp(a.split(" ")[0])
+            app = AWSApp(a.split(" ")[0])  # ???
             app.destroy(args={
                 "h": False,
                 "profile": AWSConstants.DEFAULT_IAM_USER,
-                "region": AWSConstants.DEFAULT_REGION,  # @@@ need to get region from AWSApp.list_all
+                "region": AWSConstants.DEFAULT_REGION,
                 "yes": True
             })
-            logger.info("Destroyed app '{}'".format(app.app_name))
+            logger.info("Destroyed app '%s'", app.app_name)
 
         return CliResponse("Destroyed {} apps".format(len(apps)), None, QHExit.OK)
 
-    # @@@ CliResponse
     def create(self, args: dict) -> CliResponse:
         logger.debug('make')
-        logger.debug("make args {}".format(args))
+        logger.debug("make args %s", args)
         stdout = ""
         stderr = ""
         prompt_continue = input("proceed? (y/N): ")
@@ -372,19 +368,13 @@ class AWSApp(AppBase, AWSResourceBase):
             return CliResponse(stdout, stderr, QHExit.ABORTED)
         params = self._parse_make(args)
 
-        # @@@ save info about app, i.e. name, region
-        # apps:
-        #   <app_name>:
-        ##       region: <region>
-        #       ...
         self.load_default_config(region=params['region'])
         profile = AWSConstants.DEFAULT_IAM_USER
         kp = KP(app_name=self.app_name, region=params['region'], profile=profile)
         sg = SG(app_name=self.app_name, region=params['region'], profile=profile, vpc_id=self.vpc_id)
         host = AWSHost(app_name=self.app_name, region=params['region'], profile=profile)
-        print(host.describe())
         if host.describe() != []:
-            logger.error(f"app named '{self.app_name}' already exists")
+            logger.error("app named '%s' already exists", self.app_name)
             return CliResponse(None, f"app named '{self.app_name}' already exists", QHExit.ABORTED)
 
         kp_created = kp.create(ssh_key_filepath=params['ssh_key_filepath'])
@@ -412,11 +402,10 @@ class AWSApp(AppBase, AWSResourceBase):
 
     def update(self, args: dict) -> CliResponse:
         raise Exception("TODO")
-        logger.debug("update args {}".format(args))
 
     def destroy(self, args: dict) -> CliResponse:
         logger.debug("destroy")
-        logger.debug("destroy args {}".format(args))
+        logger.debug("destroy args %s", args)
         if 'yes' not in args.keys():
             prompt_continue = input("proceed? (y/n)")
             if not prompt_continue == 'y':
@@ -444,7 +433,7 @@ class AWSApp(AppBase, AWSResourceBase):
         if kp_destroyed and hosts_destroyed and sg_destroyed:
             return CliResponse('Done', '', QHExit.OK)
         else:
-            return CliResponse('finished destroying hosts with errors', "kp_destroyed={}, hosts_destroyed={}, sg_destroyed={}}".format(
+            return CliResponse('finished destroying hosts with errors', "kp_destroyed={}, hosts_destroyed={}, sg_destroyed={}".format(
                 kp_destroyed, hosts_destroyed, sg_destroyed
             ), QHExit.GENERAL_FAILURE)
 
@@ -458,15 +447,15 @@ class AWSApp(AppBase, AWSResourceBase):
         flags = input_args.keys()
         # ports ingress
         if 'port' in flags:
-            # get rid of duplicates
-            _ports = list(dict.fromkeys(input_args['port']))
-            ports = []  #@@@ default port
+            _ports = list(dict.fromkeys(input_args['port']))  # get rid of duplicates
+            ports = []
             for p in _ports:
                 try:
                     ports.append(str(p))
                 except ValueError:
                     raise RuntimeError("port numbers must be digits")
             make_params['ports'] = ports
+
         # set defaults based on os
         # NOTE: specifying a port on the command line will override defaults
         # this is not documented, but is desired behavior
@@ -475,6 +464,7 @@ class AWSApp(AppBase, AWSResourceBase):
                 make_params['ports'] = [3389]
             else:
                 make_params['ports'] = [22]
+
         # cidrs ingress
         # always add public ip
         make_params['cidrs'] = []
@@ -482,7 +472,7 @@ class AWSApp(AppBase, AWSResourceBase):
         if input_args['ip'] is not None:
             for i in input_args['ip']:
                 if len(i.split('/')) == 1:
-                    logger.warning(f"Assuming /32 cidr for ip '{i}'")
+                    logger.warning("Assuming /32 cidr for ip '%s'", i)
                     make_params['cidrs'].append(i + "/32")
                 else:
                     make_params['cidrs'].append(i)
@@ -493,12 +483,8 @@ class AWSApp(AppBase, AWSResourceBase):
         make_params['userdata'] = input_args['userdata']
 
         # ec2 key pem file
-        # test: input is dir (done)
-        # test: input is a filename (treat as non-existant directory)
-        # test: input is None (default to ~/.ssh/<app_name>.pem)
-        # @@ should raise before y/n prompt...
         make_params['ssh_key_filepath'] = self.get_ssh_key_filepath(input_args['ssh_key_filepath'])
-        logger.debug("Will create new private key at '{}'".format(make_params['ssh_key_filepath']))
+        logger.debug("Will create new private key at '%s'", make_params['ssh_key_filepath'])
 
         # the rest
         if 'dry_run' in flags:
@@ -532,6 +518,6 @@ class AWSApp(AppBase, AWSResourceBase):
                 _kfname = _keypath / f"{self.app_name}.pem"
                 return str(_kfname.absolute())
             else:
-                logger.error('The ssh key filepath you entered is not a directory: {}'.format(_keypath.absolute()))
+                logger.error('The ssh key filepath you entered is not a directory: %s', _keypath.absolute())
                 print('The ssh key filepath you entered is not a directory: {}'.format(_keypath.absolute()))
                 raise SystemExit(1)

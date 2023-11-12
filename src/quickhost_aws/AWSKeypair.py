@@ -57,35 +57,33 @@ class KP(AWSResourceBase):
 
     def _create_ssh_key_file(self, key_material: str, ssh_key_filepath) -> None:
         """
-        Create ssh key .pem file or raise
+        Create a new ssh private key to file ssh_key_filepath, containing key_material (str).
         """
-        tgt_file = Path(ssh_key_filepath) # will be absolute filepath from AWSApp._parse_make (get rid of Path)
+        tgt_file = Path(ssh_key_filepath)
         if tgt_file.exists():
-            logger.critical("Existing keyfile found at '{}' - refusing to overwrite!".format(ssh_key_filepath))
+            # This can be checked beforehand
+            logger.critical("Existing keyfile found at '%s' - refusing to overwrite!", ssh_key_filepath)
             raise SystemExit(1)
         try:
+            logger.debug("Saving private key file '%s'", ssh_key_filepath)
             with tgt_file.open('w') as pemf:
                 pemf.writelines(key_material)
                 os.chmod(tgt_file.absolute(), 0o600)
-            logger.debug(f"saved private key to file '{ssh_key_filepath}'")
         except Exception as e:
-            logger.critical(f"Exception creating ssh keyfile: {e}", exc_info=True)
+            logger.critical("Exception creating ssh keyfile: %s", e, exc_info=True)
             raise SystemExit(1)
 
 
     def create(self, ssh_key_filepath=None) -> bool:
         """Make a new ec2 keypair named for app"""
 
-        # ew
-        # There will never be an existing keypair
-        # This is (yet another) textbook example oa premature optimization
         existing_key_pair = self.describe()
 
         if existing_key_pair['key_id'] is not None:
             # NOTE: You can't retreive key material unless you are creating the key
-            logger.error("EC2 key pair already exists in AWS (id={}, fingerprint={}, region={})".format(
-                existing_key_pair['key_id'], existing_key_pair['key_fingerprint'], '@@@ uhhhh this is important...'))
-            raise SystemExit(1)
+            logger.error("EC2 key pair already exists in AWS: (id=%s, fingerprint=%s, region=%s). You must delete the key before trying again",
+                existing_key_pair['key_id'], existing_key_pair['key_fingerprint'], '@@@ uhhhh this is important...')
+            raise SystemExit(1)  # Why?
         else:
             new_key = self.client.create_key_pair(
                 KeyName=self.app_name,
@@ -101,6 +99,8 @@ class KP(AWSResourceBase):
                     },
                 ],
             )
+
+            # @@@ default value is None, but this function doesn't handle that case
             self._create_ssh_key_file(new_key['KeyMaterial'], ssh_key_filepath)
             new_key_id = new_key['KeyPairId']
             new_key_fp = new_key['KeyFingerprint']
@@ -131,29 +131,41 @@ class KP(AWSResourceBase):
             for t in existing_key['KeyPairs'][0]['Tags']:
                 if t['Key'] == 'ssh_key_filepath':
                     rtn['ssh_key_filepath'] = t['Value']
-            logger.debug("Describe keypairs: {}".format(rtn))
+            logger.debug("Describe keypairs: %s", rtn)
             # store_test_data(resource='AWSKeypair', action='describe_key_pairs', response_data=scrub_datetime(existing_key))
             return rtn
         except ClientError as e:
             code = e.__dict__['response']['Error']['Code']
             if code == 'InvalidKeyPair.NotFound':
-                logger.debug(f"({code}): {e.operation_name}")
+                logger.debug("(%s): %s", code, e.operation_name)
                 rtn['key_id'] = None
                 rtn['key_fingerprint'] = None
                 return rtn
             else:
-                logger.error(f"(Key Pair) Unhandled botocore client exception: ({code}): {e}")
+                logger.error("(Key Pair) Unhandled botocore client exception: (%s): %s", code, e)
                 return rtn
 
     def windows_get_password(self, instance_id):
-        """Return the unencrypted password for the Adminstrator user"""
+        """
+        BORKED: don't use Windows, Kappa.
+
+        Return the unencrypted password for the Adminstrator user, after decrypting it with the app's associated private key.
+        """
+
+        keyf = self.describe()['ssh_key_filepath']
+        if keyf is None:
+            # arbitrarily try to load keyfile in cwd
+            keyf = f"{self.app_name}.pem"
+        if not Path(keyf).exists():
+            raise FileNotFoundError(str(Path(keyf).absolute()))
+
         response = self.client.get_password_data(InstanceId=instance_id)
         pw_data = response['PasswordData']
         if pw_data == "":
-            logger.error("Could not retrieve password data. It is possible that the password has not been generated and will be available within the next 15 minutes. You may retrieve the password with main.py aws describe {} --show-password".format(self.app_name))
+            logger.error("Could not retrieve password data. If you recently created a host too quickly, it is possible that the password has not been generated and will be available within the next 15 minutes. You may retrieve the password with main.py aws describe -n %s --show-password", self.app_name)
             return "Try again later"
 
-        with open(f"{self.app_name}.pem", 'rb') as pemf:
+        with open(keyf, 'rb') as pemf:
             privkey = serialization.load_pem_private_key(
                 pemf.read(),
                 password=None
@@ -164,30 +176,35 @@ class KP(AWSResourceBase):
         ).decode('utf-8')
 
     def destroy(self) -> bool:
-        key = self.describe()  # this should be passed into destroy but I'm le tired (and unpaid)
+        key = self.describe()
         try:
             if key['key_id'] is not None:
                 del_key = self.client.delete_key_pair(
                     KeyPairId=key['key_id'],
                     DryRun=False
                 )
-                logger.debug("deleted EC2 key pair: {}".format(key['key_id']))
+                logger.debug("deleted EC2 key pair: %s", key['key_id'])
                 store_test_data(resource='AWSKeyPair', action='delete_key_pair', response_data=del_key)
             else:
-                logger.warning(f"No EC2 key pair for app '{self.app_name}' to delete")
+                logger.warning("No EC2 key pair for app '%s' to delete", self.app_name)
 
+            # NOTE: can't delete the ssh keyfile if it exists, because the name
+            # of the file can't be assumed to be app_name.pem - it is
+            # overwritable with the --ssh-key-filepath cli option.
             if key['ssh_key_filepath'] is not None:
                 ssh_key_file = Path(key['ssh_key_filepath'])
                 if ssh_key_file.exists():
                     ssh_key_file.unlink()
-                    logger.debug(f"removed keyfile '{ssh_key_file.name}'")
+                    logger.debug("removed keyfile '%s'", ssh_key_file.name)
                     return True
                 else:
-                    logger.warning(f"No ssh private key file to remove at '{ssh_key_file.absolute()}'")
-                    return False
+                    logger.warning("No ssh private key file found at '%s'", ssh_key_file.absolute())
+            return False
+
+
         except ClientError as e:
             handle_client_error(e)
-            logger.error("failed to delete keypair for app '{}' (id={}): {}".format(self.app_name, key['key_id'], e))
+            logger.error("failed to delete keypair for app '%s' (id=%s): %s", self.app_name, key['key_id'], e)
             return False
 
     def update(self):

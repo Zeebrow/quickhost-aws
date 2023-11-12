@@ -56,7 +56,7 @@ class Iam(AWSResourceBase):
             "iam_user_arn": None,
             "iam_group_arn": None,
         }
-        # @@@ unreachable ???
+
         if self.caller_info['username'] == AWSConstants.DEFAULT_IAM_USER:
             logger.warning("The default quickhost user is not allowed to 'init'!")
             raise QuickhostUnauthorized("The default quickhost user is not allowed to 'init'!", operation='app init')
@@ -94,45 +94,45 @@ class Iam(AWSResourceBase):
         group = iam.Group(self.iam_group)
         try:
             group.remove_user(UserName=self.iam_user)
-            logger.info(f"Removed user '{self.iam_user}' from group '{self.iam_group}'")
+            logger.info("Removed user '%s' from group '%s'", self.iam_user, self.iam_group)
         except ClientError as e:
             code = e.__dict__['response']['Error']['Code']
             if code == 'NoSuchEntity':
-                logger.info(f"User '{self.iam_user}' was removed from Group '{self.iam_group}'")
+                logger.info("User '%s' was removed from Group '%s'", self.iam_user, self.iam_group)
             else:
-                logger.error(f"Unknown error caught while deleting group: {e}")
+                logger.error("Unknown error caught while removing user from group: %s", e)
         for action, arn in policy_arns.items():
             if arn is None:
-                logger.info(f"Policy for '{action}' not found.")
+                logger.info("Policy for '%s' not found.", action)
                 continue
             p = iam.Policy(arn)
             if p.attachment_count == 0:
-                logger.info(f"Policy '{p.arn}' is not attached.")
+                logger.info("Policy '%s' is not attached.", p.arn)
             else:
                 p.detach_group(GroupName=group.name)
-                logger.info(f"Detatched policy {arn} from {group.name}... ")
+                logger.info("Detatched policy %s from %s... ", arn, group.name)
             p.delete()
-            logger.info(f"Deleted policy {p.arn}... ")
+            logger.info("Deleted policy %s... ", p.arn)
         try:
             group.delete()
-            logger.info(f"Deleted group {group.arn}... ")
+            logger.info("Deleted group %s... ", group.arn)
         except ClientError as e:
             code = e.__dict__['response']['Error']['Code']
             if code == 'NoSuchEntity':
-                logger.info(f"Group '{self.iam_group}' doesn't exist")
+                logger.info("Group '%s' doesn't exist", self.iam_group)
             else:
-                logger.error(f"Unknown error caught while deleting group: {e}")
+                logger.error("Unknown error caught while deleting group: %s", e)
         try:
             self._delete_user_config()
             self._delete_user_credentials()
             user.delete()
-            logger.info(f"Deleted user {user.arn}... ")
+            logger.info("Deleted user %s... ", user.arn)
         except ClientError as e:
             code = e.__dict__['response']['Error']['Code']
             if code == 'NoSuchEntity':
-                logger.info(f"User '{self.iam_user}' doesn't exist")
+                logger.info("User '%s' doesn't exist", self.iam_user)
             else:
-                logger.error(f"Unknown error caught while deleting user: {e}")
+                logger.error("Unknown error caught while deleting user: %s", e)
 
     def create_policies(self):
         policy_arns = self.qh_policy_arns()
@@ -141,25 +141,26 @@ class Iam(AWSResourceBase):
 
     def attach_policies_and_group(self) -> bool:
         rtn = False
-        iam = self.iam  # @@@???
+        iam = self.iam
         group = iam.Group(self.iam_group)
         policy_arns = self.qh_policy_arns()
         for action, arn in policy_arns.items():
             _arn = Arn(arn)
             if _arn.is_arn(arn):
                 group.attach_policy(PolicyArn=policy_arns[action])
-                logger.info(f"Policy '{policy_arns[action]}' is attached to group '{group.name}'")
+                logger.info("Policy '%s' is attached to group '%s'", policy_arns[action], group.name)
             else:
-                logger.warning(f"Not attaching a policy for action '{action}': {_arn.error}")
+                logger.warning("Not attaching a policy for action '%s': %s", action, _arn.error)
                 rtn = False
         try:
             group.add_user(UserName=self.iam_user)
             rtn = True
-            logger.info(f"User '{self.iam_user}' is attached to group '{group.name}'")
+            logger.info("User '%s' is attached to group '%s'", self.iam_user, group.name)
         except ClientError as e:
             code = e.response['Error']['Code']
             if code == 'UnauthorizedOperation' or code == 'AccessDenied':
-                return rtn
+                logger.error("Could not attach user '%s' to group '%s': %s", self.iam_user, group.name, code)
+
         return rtn
 
     def create_iam_user_and_group(self):
@@ -176,13 +177,12 @@ class Iam(AWSResourceBase):
                 Tags=[ { 'Key': 'quickhost', 'Value': 'aws' }, ]
             )
             rtn['iam_user_arn'] = user.arn
-            logger.info(f"Created user '{self.iam_user}'")
+            logger.info("Created user '%s'", self.iam_user)
         except ClientError as e:
             code = e.__dict__['response']['Error']['Code']
             if code == 'EntityAlreadyExists':
                 rtn['iam_user_arn'] = self.client.get_user(UserName=self.iam_user)['User']['Arn']
-                logger.info(f"User '{self.iam_user}' already exists.")
-                logger.info(f"User '{user}' already exists.")
+                logger.info("User '%s' already exists.", self.iam_user)
         try:
             group.create(
                 Path='/quickhost/',
@@ -190,12 +190,12 @@ class Iam(AWSResourceBase):
                 # Tags=[ { 'Key': 'quickhost', 'Value': 'aws' }, ]
             )
             rtn['iam_group_arn'] = group.arn
-            logger.info(f"Created group '{self.iam_group}'")
+            logger.info("Created group '%s'", self.iam_group)
         except ClientError as e:
             code = e.__dict__['response']['Error']['Code']
             if code == 'EntityAlreadyExists':
                 rtn['iam_group_arn'] = self.client.get_group(GroupName=self.iam_group)['Group']['Arn']
-                logger.info(f"Group '{self.iam_group}' already exists.")
+                logger.info("Group '%s' already exists.", self.iam_group)
         return rtn
 
     def qh_policy_arns(self):
@@ -219,7 +219,7 @@ class Iam(AWSResourceBase):
             elif policy['PolicyName'] == 'quickhost-destroy':
                 rtn['destroy'] = policy['Arn']
             else:
-                logger.warning(f"Found unknown quickhost policy {policy['PolicyName']}")
+                logger.warning("Found unknown quickhost policy %s", policy['PolicyName'])
                 continue
         return rtn
 
@@ -235,11 +235,11 @@ class Iam(AWSResourceBase):
                 Tags=[ { 'Key': 'quickhost', 'Value': 'aws' }, ]
             )
             arn = new_policy['Policy']['Arn']
-            logger.info(f"created '{action}' policy '{arn}'")
+            logger.info("Created '%s' policy '%s'", action, arn)
         except ClientError as e:
             code = e.__dict__['response']['Error']['Code']
             if code == 'EntityAlreadyExists':
-                logger.warning(f"Policy '{action}' already exists.")
+                logger.warning("Policy '%s' already exists.", action)
                 arn = existing_policies[action]
         return arn
 
@@ -257,11 +257,11 @@ class Iam(AWSResourceBase):
             if cfg_deleted:
                 with aws_config_file.open('w') as aws_cfg:
                     config_parser.write(aws_cfg)
-                logger.info(f"deleted {self.iam_user} from aws config file.")
+                logger.info("Deleted profile for iam user '%s' from aws config file.", self.iam_user)
             else:
-                logger.error(f"Can't delete profile for {self.iam_user}: does not exist.")
+                logger.error("Can't delete profile for %s: profile does not exist.", self.iam_user)
         else:
-            logger.warning(f"Can't delete profile for {self.iam_user}: does not exist.")
+            logger.warning("Can't delete profile for %s: profile does not exist.", self.iam_user)
         return False
 
     def _delete_user_credentials(self):
@@ -280,17 +280,33 @@ class Iam(AWSResourceBase):
             if creds_deleted:
                 with aws_credentials_file.open('w') as aws_creds:
                     credentials_parser.write(aws_creds)
-                logger.info(f"deleted {self.iam_user} from aws credentials file.")
+                logger.info("Deleted %s from aws credentials file.", self.iam_user)
             else:
-                logger.error(f"No credentials for '{self.iam_user}' found to remove.")
+                logger.error("No credentials for '%s' found to remove.", self.iam_user)
         else:
-            logger.warning(f"No credentials for '{self.iam_user}' found to remove.")
+            logger.warning("No credentials for '%s' found to remove.", self.iam_user)
+
         iam = self.iam
         user = iam.User(self.iam_user)
         keys = user.access_keys.all()
         for k in keys:
-            logger.info(f"Deleting access key: {k.id}...")
+            logger.info("Deleting access key: %s...", k.id)
             k.delete()
+
+        # try:
+        #     iam = self.iam
+        #     user = iam.User(self.iam_user)
+        #     keys = user.access_keys.all()
+        #     for k in keys:
+        #         logger.info("Deleting access key: %s...", k.id)
+        #         k.delete()
+        # except ClientError as e:
+        #     code = e.__dict__['response']['Error']['Code']
+        #     if code == 'NoSuchEntity':
+        #         logger.debug("User '%s' does not exist.", self.iam_user)
+        #     else:
+        #         logger.error("Unknown error caught while attempting to delete iam user '%s': %s", self.iam_user, e)
+        #     return rtn  # return before trying to get nogroup's policies.
         return
 
     #@@@ default region
@@ -308,7 +324,7 @@ class Iam(AWSResourceBase):
 
             # @@@ handle aws cli setup?
             if not aws_config_dir.exists():
-                logger.info(f"Creating new directory for aws credentials: {aws_config_dir.absolute()}")
+                logger.info("Creating new directory for aws credentials: %s", aws_config_dir.absolute())
                 logger.warning("(not really)")
             # @@@ testme
             if self.iam_user not in config_parser:
@@ -318,12 +334,12 @@ class Iam(AWSResourceBase):
                 }
                 with aws_config_file.open('w') as aws_cfg:
                     config_parser.write(aws_cfg)
-                logger.info(f"Added {self.iam_user} profile to {aws_config_file.absolute()}.")
+                logger.info("Added %s profile to %s.", self.iam_user, aws_config_file.absolute())
                 return True
             else:  # should never reach here
-                logger.error(f"Profile for {self.iam_user} already exists.")
+                logger.error("Profile for %s already exists.", self.iam_user)
         else:
-            logger.warning(f"Profile for {self.iam_user} already exists.")
+            logger.warning("Profile for %s already exists.", self.iam_user)
         return False
 
     def _create_user_credentials(self):
@@ -340,7 +356,7 @@ class Iam(AWSResourceBase):
             credentials_parser.read(aws_credentials_file)
             # @@@ handle aws cli setup?
             if not aws_config_dir.exists():
-                logger.info(f"Creating new directory for aws credentials: {aws_config_dir.absolute()}")
+                logger.info("Creating new directory for aws credentials: %s", aws_config_dir.absolute())
                 logger.warning("(not really)")
             user = iam.User(self.iam_user)
             access_key_pair = user.create_access_key_pair()
@@ -352,9 +368,9 @@ class Iam(AWSResourceBase):
                 with aws_credentials_file.open('w') as aws_creds:
                     credentials_parser.write(aws_creds)
                 aws_credentials_file.chmod(0o0600)
-                logger.info(f"Added {self.iam_user} credentials to {aws_credentials_file.absolute()}.")
+                logger.info("Added %s credentials to %s.", self.iam_user, aws_credentials_file.absolute())
             else:
-                logger.debug(f"Credentials for {self.iam_user} already exists.")
+                logger.debug("Credentials for %s already exists.", self.iam_user)
 
     def _describe_iam_policies(self):
         rtn = {
@@ -382,9 +398,9 @@ class Iam(AWSResourceBase):
         except ClientError as e:
             code = e.__dict__['response']['Error']['Code']
             if code == 'NoSuchEntity':
-                logger.debug(f"Group '{self.iam_group}' does not exist.")
+                logger.debug("Group '%s' does not exist.", self.iam_group)
             else:
-                logger.error(f"Unknown error caught: {e}")
+                logger.error("Unknown error caught: %s", e)
                 return f"ERROR ({code})"
             return rtn  # return before trying to get nogroup's policies.
         for attached_policy in group.attached_policies.all():
@@ -404,15 +420,23 @@ class Iam(AWSResourceBase):
         except ClientError as e:
             code = e.__dict__['response']['Error']['Code']
             if code == 'NoSuchEntity':
-                logger.info(f"User '{self.iam_user}' was removed from Group '{self.iam_group}'")
+                logger.info("User '%s' was removed from Group '%s'", self.iam_user, self.iam_group)
             else:
-                logger.error(f"Unknown error caught while deleting group: {e}")
+                logger.error("Unknown error caught while deleting group: %s", e)
             return rtn
         for key in user.access_keys.all():
             rtn['access-keys'].append(f"{key.access_key_id} ({key.status})")
         return rtn
 
     def _describe_user_credentials(self):
+        """
+        Returns a dict containing the status of user's aws config and aws
+        credentials files.  'default-region' is an empty string if the config
+        file exists but no region is found for the profile name.
+        'credentials-exist' is True if the credentials file exists at the
+        default location (user home directory/.aws/credentials) and contains the
+        profile.
+        """
         rtn = {
             'default-region': None,
             'credentials-exist': None,
@@ -427,7 +451,7 @@ class Iam(AWSResourceBase):
             if config_parser[profile_name]:
                 rtn['default-region'] = config_parser[profile_name].get('region')
         except KeyError:
-            logger.debug(f"No config for profile '{profile_name}' found at '{aws_config_file.absolute()}'")
+            logger.debug("No config for profile '%s' found at '%s'", profile_name, str(aws_config_file.absolute()))
             rtn['default-region'] = ''
 
         credentials_parser = ConfigParser()
@@ -437,8 +461,9 @@ class Iam(AWSResourceBase):
                 rtn['credentials-exist'] = True
             else:
                 rtn['credentials-exist'] = False
+            # rtn['credentials-exist'] = self.iam_user in credentials_parser.sections()
         except KeyError:
-            logger.debug(f"No credentials found at '{aws_credentials_file.absolute()}'")
+            logger.debug("No credentials found at '%s'", aws_credentials_file.absolute())
             rtn['credentials-exist'] = False
         finally:
             return rtn

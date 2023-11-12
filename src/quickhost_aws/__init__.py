@@ -13,14 +13,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from .AWSApp import AWSApp
-from .PluginArgs import AWSParser
-from .AWSSG import SG  # noqa: F401
-
-
 def get_parser():
+    from .PluginArgs import AWSParser
     return AWSParser
 
 
 def load_plugin():
+    from .AWSApp import AWSApp
     return AWSApp

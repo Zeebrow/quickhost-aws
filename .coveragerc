@@ -1,0 +1,8 @@
+[run]    
+branch = True    
+#command_line = -m pytest --cov-report=html --cov=quickhost_aws --log-cli-level=INFO tests/ 
+command_line = -m pytest --log-cli-level=INFO tests/ 
+    
+[report]    
+show_missing = True    
+include = src/quickhost_aws/*
