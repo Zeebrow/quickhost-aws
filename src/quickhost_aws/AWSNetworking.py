@@ -17,7 +17,7 @@ import logging
 
 from botocore.exceptions import ClientError
 
-from quickhost import APP_CONST as QH_C, store_test_data, scrub_datetime
+from quickhost import APP_CONST as QH_C, scrub_datetime
 
 from .utilities import get_single_result_id, QuickhostUnauthorized, quickmemo, TagSpec, DefaultFilter, DefaultTag
 from .AWSResource import AWSResourceBase
@@ -172,8 +172,6 @@ class AWSNetworking(AWSResourceBase):
             vpc_id = get_single_result_id("Vpc", existing_vpcs)
             existing_subnets = self.client.describe_subnets( Filters=[ DefaultFilter ],)
             subnet_id = get_single_result_id("Subnet", existing_subnets)
-            store_test_data(resource='AWSNetworking', action='describe_vpcs', response_data=scrub_datetime(existing_vpcs))
-            store_test_data(resource='AWSNetworking', action='describe_subnets', response_data=scrub_datetime(existing_subnets))
         except ClientError as e:
             code = e.response['Error']['Code']
             if code == 'UnauthorizedOperation' or code == 'AccessDenied':
@@ -201,8 +199,6 @@ class AWSNetworking(AWSResourceBase):
         print('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
         print('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
         print('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
-        store_test_data(resource='AWSNetworking', action='describe_route_tables', response_data=scrub_datetime(existing_rts))
-        store_test_data(resource='AWSNetworking', action='describe_internet_gateways', response_data=scrub_datetime(existing_igws))
         return {
             "vpc_id": vpc_id,
             "subnet_id": subnet_id,

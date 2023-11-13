@@ -24,7 +24,6 @@ from cryptography.hazmat.primitives import serialization
 from botocore.exceptions import ClientError
 
 from quickhost import APP_CONST as C
-from quickhost import store_test_data, scrub_datetime
 
 from .utilities import get_single_result_id, handle_client_error
 from .AWSResource import AWSResourceBase
@@ -132,7 +131,6 @@ class KP(AWSResourceBase):
                 if t['Key'] == 'ssh_key_filepath':
                     rtn['ssh_key_filepath'] = t['Value']
             logger.debug("Describe keypairs: %s", rtn)
-            # store_test_data(resource='AWSKeypair', action='describe_key_pairs', response_data=scrub_datetime(existing_key))
             return rtn
         except ClientError as e:
             code = e.__dict__['response']['Error']['Code']
@@ -184,7 +182,6 @@ class KP(AWSResourceBase):
                     DryRun=False
                 )
                 logger.debug("deleted EC2 key pair: %s", key['key_id'])
-                store_test_data(resource='AWSKeyPair', action='delete_key_pair', response_data=del_key)
             else:
                 logger.warning("No EC2 key pair for app '%s' to delete", self.app_name)
 

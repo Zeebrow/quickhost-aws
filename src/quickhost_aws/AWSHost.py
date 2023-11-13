@@ -25,7 +25,6 @@ import boto3
 
 import quickhost
 from quickhost import APP_CONST as QHC
-from quickhost.temp_data_collector import store_test_data
 
 from .constants import AWSConstants
 from .AWSResource import AWSResourceBase
@@ -132,7 +131,6 @@ class AWSHost(AWSResourceBase):
             ])
 
         r_cleaned = quickhost.scrub_datetime(response)
-        store_test_data(resource='AWSHost', action='create', response_data=r_cleaned)
         self.wait_for_hosts_to_start(num_hosts)
         ssh_strings = []
         app_insts_thingy = self._get_app_instances()
@@ -186,7 +184,6 @@ class AWSHost(AWSResourceBase):
             response = self.client.terminate_instances(
                 InstanceIds=tgt_instances
             )
-            store_test_data(resource='AWSHost', action='terminate_instances', response_data=quickhost.scrub_datetime(response))
         except ClientError as e:
             logger.error(e)
             return False
@@ -265,7 +262,6 @@ class AWSHost(AWSResourceBase):
             DryRun=False,
             MaxResults=10,
         )
-        store_test_data(resource='AWSHost', action='describe_instances', response_data=quickhost.scrub_datetime(all_hosts))
         # fishy
         instance_ids = []
         for r in all_hosts['Reservations']:

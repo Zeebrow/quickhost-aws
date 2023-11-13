@@ -18,7 +18,7 @@ import logging
 
 import botocore.exceptions
 
-from quickhost import store_test_data, scrub_datetime
+from quickhost import scrub_datetime
 
 from .utilities import QH_Tag
 from .AWSResource import AWSResourceBase
@@ -78,7 +78,6 @@ class SG(AWSResourceBase):
                 DryRun=dry_run
             )
             self.sgid = sg['GroupId']
-            store_test_data(resource='AWSSG', action='create_security_group', response_data=sg)
         except botocore.exceptions.ClientError as e:
             # @@@ need specific exception - I think the assumption here is we're
             # exclusively catching 'Already Exists' (hence the call to
@@ -123,7 +122,6 @@ class SG(AWSResourceBase):
                 IpPermissions=perms,
                 DryRun=False
             )
-            store_test_data(resource='AWSSG', action='authorize_security_group_ingress', response_data=scrub_datetime(response))
             self.ports = ports
             self.cidrs = cidrs
             return True
@@ -164,7 +162,6 @@ class SG(AWSResourceBase):
             rtn['ports'] = ports
             rtn['cidrs'] = cidrs
 
-            # store_test_data(resource='AWSSG', action='describe_security_groups', response_data=scrub_datetime(response))
             return rtn
         except IndexError:
             logger.debug("No security group with name %s found for region %s", self.app_name, self.region)
