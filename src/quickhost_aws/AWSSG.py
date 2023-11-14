@@ -61,7 +61,7 @@ class SG(AWSResourceBase):
             logger.error("Unknown error while retrieving security group id for app '%s': %s", self.app_name, e)
             return None
 
-    def create(self, cidrs, ports, dry_run=False) -> bool:
+    def create(self, cidrs, ports) -> bool:
         rtn = True
         try:
             sg = self.client.create_security_group(
@@ -75,7 +75,7 @@ class SG(AWSResourceBase):
                         QH_Tag(self.app_name)
                     ]
                 }],
-                DryRun=dry_run
+                DryRun=False
             )
             self.sgid = sg['GroupId']
         except botocore.exceptions.ClientError as e:
@@ -100,7 +100,7 @@ class SG(AWSResourceBase):
                 return False
 
             self.client.delete_security_group(GroupId=sg_id)
-            logger.info("Deleted security group '%s'", sg_id)
+            logger.debug("Deleted security group '%s'", sg_id)
             return True
 
         except botocore.exceptions.ClientError as e:

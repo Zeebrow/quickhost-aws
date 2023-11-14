@@ -22,7 +22,7 @@ from .fixtures2 import *
 @pytest.fixture
 def patched_aws_networking(patched_get_session):
     with patch('quickhost_aws.AWSNetworking.AWSResourceBase._get_session', patched_get_session):
-        awsn = AWSNetworking(profile='asdf', region='reg', dry_run=False)
+        awsn = AWSNetworking(profile='asdf', region='reg')
         return awsn
 
 

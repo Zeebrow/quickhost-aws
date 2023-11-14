@@ -14,6 +14,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
+import os
+import sys
 
 import boto3
 from botocore.exceptions import ClientError
@@ -142,3 +144,31 @@ def get_my_public_ip() -> str:
     with urllib.request.urlopen("https://ipv4.icanhazip.com") as r:
         html = r.read()
         return html.decode('utf-8').strip() + "/32"
+
+def _print_dict(d: dict, heading=None, underline_char='*') -> None:
+    if d is None:
+        logger.warning("No items to print!")
+        return
+    fill_char = '.'
+    if heading:
+        sys.stdout.write(f"\033[32m{heading}\033[0m\n")
+        print(underline_char * (len(heading)//len(underline_char)))
+
+    if os.isatty(1):
+        if os.get_terminal_size()[0] > 80:
+            termwidth = 40
+        else:
+            termwidth = os.get_terminal_size()[0]
+        for k, v in d.items():
+            if not k.startswith("_"):
+                if heading:
+                    k = underline_char + '\t' + k
+                print("{0:{fc}{align}{width}} {1}".format(
+                    k, v, fc=fill_char, align='<', width=termwidth
+                ))
+        if heading:
+            print(underline_char * (len(heading)//len(underline_char)))
+            print()
+    else:
+        logger.warning("There's nowhere to show your results!")
+    return None

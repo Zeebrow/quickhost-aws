@@ -16,6 +16,8 @@
 from pathlib import Path
 from argparse import SUPPRESS, ArgumentParser
 import logging
+from dataclasses import dataclass
+import typing as t
 
 from quickhost import APP_CONST as C, ParserBase
 from .constants import AWSConstants
@@ -56,12 +58,12 @@ class AWSParser(ParserBase):
             "-y", "--yes",
             action='store_true',
             help="Force deletion without prompting for confirmation")
-        parser.add_argument(
-            "--profile",
-            required=False,
-            action='store',
-            default=AWSConstants.DEFAULT_IAM_USER,
-            help="Profile of an admin AWS account used to destroy quickhost apps")
+        # parser.add_argument(
+        #     "--profile",
+        #     required=False,
+        #     action='store',
+        #     default=AWSConstants.DEFAULT_IAM_USER,
+        #     help="Profile of an admin AWS account used to destroy quickhost apps")
         parser.add_argument(
             "--region",
             required=False,
@@ -72,7 +74,7 @@ class AWSParser(ParserBase):
 
     def add_init_parser_arguments(self, parser: ArgumentParser):
         parser.add_argument(
-            "--profile",
+            "--admin-profile",
             required=True,
             action='store',
             help="Profile of an admin-like AWS user which will create initial quickhost resources")
@@ -82,7 +84,7 @@ class AWSParser(ParserBase):
             action='store',
             choices=AWSConstants.AVAILABLE_REGIONS,
             default=AWSConstants.DEFAULT_REGION,
-            help="AWS region in which to create initial quickhost resources")
+            help="AWS region used to create quickhost resources")
 
     def add_destroy_plugin_parser_arguments(self, parser: ArgumentParser):
         parser.add_argument(
@@ -91,7 +93,7 @@ class AWSParser(ParserBase):
             action='store_true',
             help="Force deletion without prompting for confirmation")
         parser.add_argument(
-            "--profile",
+            "--admin-profile",
             required=False,
             action='store',
             default=AWSConstants.DEFAULT_IAM_USER,
@@ -100,22 +102,9 @@ class AWSParser(ParserBase):
     def add_make_parser_arguments(self, parser: ArgumentParser) -> None:
         """arguments for `make`"""
         parser.add_argument(
-            "-n", "--app-name",
-            required=True,
+            "app_name",
             default=SUPPRESS,
             help="Name of the app being created")
-        # @@@ untested
-        parser.add_argument(
-            "--vpc-id",
-            required=False,
-            default=SUPPRESS,
-            help="Specify a VpcId to launch hosts in a VPC other than the quickhost VPC")
-        # @@@ untested
-        parser.add_argument(
-            "--subnet-id",
-            required=False,
-            default=SUPPRESS,
-            help="specify a SubnetId to choose the subnet in which to launch hosts")
         parser.add_argument(
             "-c",
             "--host-count",
@@ -177,14 +166,12 @@ class AWSParser(ParserBase):
             "-s", "--disk-size",
             required=False,
             type=int,
-            action='store',
             default=SUPPRESS,
             help="(UNTESTED) Size in GiB of root volume (30 or less qualifies for free tier)")
 
     def add_describe_parser_arguments(self, parser: ArgumentParser):
         parser.add_argument(
-            "-n", "--app-name",
-            required=True,
+            "app_name",
             default=SUPPRESS,
             help="Name of the app to describe")
         parser.add_argument(
@@ -200,62 +187,63 @@ class AWSParser(ParserBase):
             help="For Windows instances, show the Administrator password in plaintext")
 
     def add_update_parser_arguments(self, parser: ArgumentParser):
-        parser.add_argument(
-            "-n", "--app-name",
-            required=True,
-            default=SUPPRESS,
-            help="Name of the app to update")
-        parser.add_argument(
-            "-y", "--dry-run",
-            required=False,
-            action='store_true',
-            help="Prevents any resource creation when set")
-        parser.add_argument(
-            "-p", "--port",
-            required=False,
-            type=int,
-            action='append',
-            default=SUPPRESS,
-            help="Add an open tcp port to security group, applied to all ips")
-        parser.add_argument(
-            "--ip",
-            required=False,
-            action='append',
-            help="""
-            Whitelist additional IPv4 CIDRs for connecting to the hosts.
-            All ports specified with '--port' apply to all CIDRs specified here.
-            If a CIDR is not supplied with the IP address, it is assumed to be /32.
-            """)
-        parser.add_argument(
-            "--instance-type",
-            required=False,
-            default="t2.micro",
-            help="Set the type of instance to launch")
-        parser.add_argument(
-            "--ami",
-            required=False,
-            default=None,
-            help="Set the AMI to launch")
-        parser.add_argument(
-            "-u", "--userdata",
-            required=False,
-            default=None,
-            help="Path to optional userdata file to run on the hosts before after the host has launched")
+        pass
 
     def add_destroy_parser_arguments(self, parser: ArgumentParser):
         parser.add_argument(
-            "-n", "--app-name",
-            required=True,
+            "app_name",
             default=SUPPRESS,
-            help="name of the app")
+            help="Name of the app to destroy")
         parser.add_argument(
             "-r", "--region",
             required=False,
             default=AWSConstants.DEFAULT_REGION,
-            help="Region to launch the host into.")
-        parser.add_argument(
-            "--profile",
-            required=False,
-            action='store',
-            default=AWSConstants.DEFAULT_IAM_USER,
-            help="Profile of an admin AWS account used to create initial quickhost resources")
+            help="Region containing the app to destroy")
+
+
+@dataclass
+class DestroyArgs:
+    app_name: str
+    profile: str
+    region: t.Optional[str] = None
+
+@dataclass
+class PluginDestroyArgs:
+    app_name: str  # supressed
+    profile: str = AWSConstants.DEFAULT_IAM_USER
+    region: t.Optional[str] = AWSConstants.DEFAULT_REGION
+
+
+@dataclass
+class MakeArgs:
+    app_name: str  # supressed
+    host_count: int
+    port: t.Optional[t.List[int]]  # supressed
+    ip: t.Optional[str]
+    vpc_id: t.Optional[str] = None  # supressed
+    subnet_id: t.Optional[str] = None  # supressed
+    ssh_key_filepath: t.Optional[str] = None
+    instance_type: t.Optional[str] = None
+    user_data: t.Optional[str] = None
+    disk_size: t.Optional[int] = None  # supressed
+
+@dataclass
+class DescribeArgs:
+    app_name: str
+    region: t.Optional[str] = AWSConstants.DEFAULT_REGION
+    show_password: bool = False
+
+@dataclass
+class DestroyAllArgs:
+    yes: bool = False
+    profile: str = AWSConstants.DEFAULT_IAM_USER
+
+@dataclass
+class InitArgs:
+    admin_profile: str = AWSConstants.DEFAULT_IAM_USER
+    region: str = AWSConstants.DEFAULT_REGION
+
+@dataclass
+class DestroyPluginArgs:
+    admin_profile: str
+    yes: bool = False

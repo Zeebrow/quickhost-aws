@@ -416,6 +416,7 @@ class Iam(AWSResourceBase):
         iam = self.iam
         try:
             user = iam.User(self.iam_user)
+            rtn['name'] = user.name
             rtn['arn'] = user.arn
         except ClientError as e:
             code = e.__dict__['response']['Error']['Code']

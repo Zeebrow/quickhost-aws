@@ -27,11 +27,10 @@ logger = logging.getLogger(__name__)
 
 class AWSNetworking(AWSResourceBase):
 
-    def __init__(self, profile, region, dry_run=False):
+    def __init__(self, profile, region):
         session = self._get_session(profile=profile, region=region)
         self.client = session.client('ec2')
         self.ec2 = session.resource('ec2')
-        self.dry_run = dry_run
         self.vpc_id = None
         self.igw_id = None
         self.subnet_id = None
@@ -47,7 +46,7 @@ class AWSNetworking(AWSResourceBase):
             logger.debug("creating vpc...")
             vpc = self.ec2.create_vpc(
                 CidrBlock=vpc_cidr_block,
-                DryRun=self.dry_run,
+                DryRun=False,
                 TagSpecifications=[ TagSpec('vpc'), ]
             )
             vpc.wait_until_available()
@@ -67,7 +66,7 @@ class AWSNetworking(AWSResourceBase):
         if not self.igw_id:
             logger.debug("creating igw...")
             igw_id = self.client.create_internet_gateway(
-                DryRun=self.dry_run,
+                DryRun=False,
                 TagSpecifications=[ TagSpec('internet-gateway'), ]
             )
             self.igw_id = get_single_result_id("InternetGateway", igw_id, plural=False)
@@ -99,7 +98,7 @@ class AWSNetworking(AWSResourceBase):
             subnet = vpc.create_subnet(
                 CidrBlock=subnet_cidr_block,
                 VpcId=self.vpc_id,
-                DryRun=self.dry_run,
+                DryRun=False,
                 TagSpecifications=[ TagSpec('subnet'), ]
             )
             subnet.create_tags(Tags=[DefaultTag])
@@ -119,7 +118,7 @@ class AWSNetworking(AWSResourceBase):
             logger.debug("creating route table...")
             route_table = vpc.create_route_table(
                 VpcId=self.vpc_id,
-                DryRun=self.dry_run,
+                DryRun=False,
                 TagSpecifications=[ TagSpec('route-table'), ]
             )
             logger.debug("creating route for igw (%s)..", self.igw_id)
@@ -189,16 +188,6 @@ class AWSNetworking(AWSResourceBase):
                     logger.error("Internet Gateway '%s' is not attached to the correct vpc!", igw_id)
         existing_rts = self.client.describe_route_tables(Filters=[ DefaultFilter ])
         rt_id = get_single_result_id("RouteTable", existing_rts)
-        print('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
-        print('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
-        print('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
-        print('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
-        # im not convinced this actually works. like, get_single_result_id might have more to say about the Associations of an rt
-        print(rt_id)
-        print('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
-        print('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
-        print('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
-        print('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
         return {
             "vpc_id": vpc_id,
             "subnet_id": subnet_id,

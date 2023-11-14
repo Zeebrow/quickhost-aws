@@ -73,7 +73,7 @@ class KP(AWSResourceBase):
             raise SystemExit(1)
 
 
-    def create(self, ssh_key_filepath=None) -> bool:
+    def create(self, ssh_key_filepath) -> bool:
         """Make a new ec2 keypair named for app"""
 
         existing_key_pair = self.describe()
@@ -99,17 +99,13 @@ class KP(AWSResourceBase):
                 ],
             )
 
-            # @@@ default value is None, but this function doesn't handle that case
             self._create_ssh_key_file(new_key['KeyMaterial'], ssh_key_filepath)
-            new_key_id = new_key['KeyPairId']
-            new_key_fp = new_key['KeyFingerprint']
-            del new_key
 
             return {
-                'key_name': self.app_name,
-                'key_filepath': ssh_key_filepath,
-                'key_id': new_key_id,
-                'key_fingerprint': new_key_fp,
+                'key_name': new_key['KeyName'],
+                'key_id': new_key['KeyPairId'],
+                'key_fingerprint': new_key['KeyFingerprint'],
+                'ssh_key_filepath': ssh_key_filepath,
             }
 
     def describe(self):
@@ -177,7 +173,7 @@ class KP(AWSResourceBase):
         key = self.describe()
         try:
             if key['key_id'] is not None:
-                del_key = self.client.delete_key_pair(
+                self.client.delete_key_pair(
                     KeyPairId=key['key_id'],
                     DryRun=False
                 )
@@ -207,14 +203,3 @@ class KP(AWSResourceBase):
     def update(self):
         """Not implemented"""
         pass
-
-
-if __name__ == '__main__':
-    import boto3
-    c = boto3.client('ec2')
-    kp = KP(client=c, app_name='asdf', ssh_key_filepath='.', dry_run=False )
-    # print(json.dumps(kp.get_key_pair(),indent=2))
-    # print(kp.destroy())
-    # print(json.dumps(kp.create(),indent=2))
-    print()
-    print(json.dumps(kp.describe(), indent=2))

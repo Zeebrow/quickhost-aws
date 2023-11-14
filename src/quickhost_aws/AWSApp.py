@@ -31,7 +31,7 @@ from .AWSHost import AWSHost
 from .AWSKeypair import KP
 from .AWSNetworking import AWSNetworking
 from .constants import AWSConstants
-from .utilities import QuickhostUnauthorized, Arn, QuickhostAWSException, get_my_public_ip
+from .utilities import QuickhostUnauthorized, Arn, QuickhostAWSException, get_my_public_ip, _print_dict
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,6 @@ class AWSApp(AppBase, AWSResourceBase):
         self.userdata = None
         self.ports = []
         self.cidrs = []
-        self.dry_run = None
         self.vpc_id = None
         self.subnet_id = None
         self.sgid = None
@@ -84,32 +83,6 @@ class AWSApp(AppBase, AWSResourceBase):
         self.user = calling_user_arn.resource
         self.account = calling_user_arn.account
         return networking_params
-
-    def _print_loaded_args(self, d: dict, heading=None) -> None:
-        if d is None:
-            logger.warning("No items to print!")
-            return
-        underline_char = '*'
-        fill_char = '.'
-        if heading:
-            print(heading)
-            print(underline_char * len(heading))
-
-        if os.isatty(1):
-            if os.get_terminal_size()[0] > 80:
-                termwidth = 40
-            else:
-                termwidth = os.get_terminal_size()[0]
-            for k, v in d.items():
-                if not k.startswith("_"):
-                    if heading:
-                        k = underline_char + k
-                    print("{0:{fc}{align}{width}} {1}".format(
-                        k, v, fc=fill_char, align='<', width=termwidth
-                    ))
-        else:
-            logger.warning("There's nowhere to show your results!")
-        return None
 
     def plugin_destroy(self, plugin_destroy_args) -> CliResponse:
         """"""
@@ -224,52 +197,7 @@ class AWSApp(AppBase, AWSResourceBase):
         logger.debug("describe args %s", args)
         params = args
         params['profile'] = AWSConstants.DEFAULT_IAM_USER
-        networking_params = self.load_default_config(
-            region=params['region']
-        )
 
-        iam_vals = Iam(
-            region=params['region'],
-            profile=params['profile'],
-        ).describe()
-        logger.debug("iam_vals=%s",iam_vals)
-
-        fail_iam = not iam_vals['credentials']['credentials-exist']
-        fail_netw = not networking_params
-        fail_init = (fail_netw) or (fail_iam)
-
-        if fail_init:
-            if fail_netw and fail_iam:
-                return CliResponse(None, 'No networking resources or IAM resources found for quickhost. Try re-running quickhost aws init to resolve.', 1)
-            elif fail_netw and not fail_iam:
-                return CliResponse(None, 'No networking resources found for quickhost. Try re-running quickhost aws init to resolve.', 1)
-            elif not fail_netw and fail_iam:
-                return CliResponse(None, 'No IAM resources found for quickhost. Try re-running quickhost aws init to resolve.', 1)
-            else:
-                return CliResponse(None, 'Unknown error', 1)
-        else:
-            self._print_loaded_args({
-                'account': self.account,
-                'invoking user': '/'.join(self.user.split('/')[1:])
-            }, heading="you are")
-            self._print_loaded_args(networking_params, heading="global params")
-            self._print_loaded_args(iam_vals)
-
-        sg = SG(
-            app_name=self.app_name,
-            region=params['region'],
-            profile=params['profile'],
-            vpc_id=self.vpc_id,
-        )
-        sg_describe = sg.describe()
-        logger.debug("sg_describe=%s", sg_describe)
-        kp = KP(
-            app_name=self.app_name,
-            region=params['region'],
-            profile=params['profile'],
-        )
-        kp_describe = kp.describe()
-        logger.debug("kp_describe=%s",kp_describe)
         hosts = AWSHost(
             app_name=self.app_name,
             region=params['region'],
@@ -277,6 +205,19 @@ class AWSApp(AppBase, AWSResourceBase):
         )
         hosts_describe = hosts.describe()
         logger.debug("hosts_describe=%s", hosts_describe)
+        if len(hosts_describe) == 0:
+            logger.warning("No hosts found for app '%s'", self.app_name)
+            return CliResponse(None, f"No hosts found for app '{self.app_name}'", 1)
+
+        kp = KP(
+            app_name=self.app_name,
+            region=params['region'],
+            profile=params['profile'],
+        )
+        kp_describe = kp.describe()
+        logger.debug("kp_describe=%s",kp_describe)
+        for h in hosts_describe:
+            h['ssh_key_filepath'] = kp_describe['ssh_key_filepath']
 
         passwords = {}
         if len(hosts_describe) != 0:
@@ -285,46 +226,73 @@ class AWSApp(AppBase, AWSResourceBase):
                     if params['show_password']:
                         passwords[h.instance_id] = kp.windows_get_password(h.instance_id)
                     else:
-                        passwords[h.instance_id] = '*****************************'
+                        passwords[h.instance_id] = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
             for h in hosts_describe:
                 for inst_id, pw in passwords.items():
                     if inst_id == h.instance_id:
                         h.password = pw
 
-        print('security groups:')
-        self._print_loaded_args(sg_describe)
-        print('keypair:')
-        self._print_loaded_args(kp_describe)
-        print('*********************************************************')
+        if params['verbosity'] > 0:
+            networking_params = self.load_default_config(
+                region=params['region']
+            )
 
-        if hosts_describe is None:
-            logger.warning("No hosts found for app '%s'", self.app_name)
-        else:
-            for i, h in enumerate(hosts_describe):
-                self._print_loaded_args(h.__dict__, heading=f"host {i}")
-                sys.stdout.write("\033[32m{}\033[0m".format('ssh:') + "\n")
-                print(f"ssh -i {kp_describe['ssh_key_filepath']} ec2-user@{h.public_ip}")
-                print()
-                sys.stdout.write("\033[32m{}\033[0m".format('ansible:') + "\n")
-                print(dedent(f"""\
-                    [{h.app_name}]
-                    {h.public_ip}
-                    [{h.app_name}:vars]
-                    ansible_user=ec2_user
-                    ansible_ssh_private_key_file={kp_describe['ssh_key_filepath']}
-                """))
+            iam_vals = Iam(
+                region=params['region'],
+                profile=params['profile'],
+            ).describe()
+            logger.debug("iam_vals=%s",iam_vals)
+            iam_print = {}
+
+            iam_print['credentials check'] = 'ok' if iam_vals['credentials']['credentials-exist'] else 'not ok'
+            iam_print['your_region'] = iam_vals['credentials']['default-region'] or '???'
+            iam_print['user_arn'] = iam_vals['iam-user']['arn']
+            iam_print['group_arn'] = iam_vals['iam-group']['arn']
+
+            sg = SG(
+                app_name=self.app_name,
+                region=params['region'],
+                profile=params['profile'],
+                vpc_id=self.vpc_id,
+            )
+            sg_describe = sg.describe()
+            logger.debug("sg_describe=%s", sg_describe)
+
+            # no logging below this line
+            _print_dict({
+                'account': self.account,
+                'invoking user': '/'.join(self.user.split('/')[1:])
+            }, heading="you are")
+            _print_dict(networking_params, heading="app-global params")
+            _print_dict(iam_print, heading='IAM')
+            _print_dict(sg_describe, heading='security groups')
+            _print_dict(kp_describe, heading='key pair')
+
+        for i, h in enumerate(hosts_describe):
+            _print_dict(h.__dict__, heading=f"host {i}")
+            sys.stdout.write("\033[32m{}\033[0m".format('ssh:') + "\n")
+            print(f"ssh -i {kp_describe['ssh_key_filepath']} ec2-user@{h.public_ip}")
+            print()
+            sys.stdout.write("\033[32m{}\033[0m".format('ansible inventory entry:') + "\n")
+            print(dedent(f"""\
+                [{h.app_name}]
+                {h.public_ip}
+                [{h.app_name}:vars]
+                ansible_user=ec2_user
+                ansible_ssh_private_key_file={kp_describe['ssh_key_filepath']}
+            """))
         return CliResponse('Done', None, QHExit.OK)
 
     @classmethod
     def list_all(self):
-        return CliResponse(json.dumps({
+        return CliResponse(_print_dict({
             "apps": AWSHost(
                 app_name="list-all",
                 profile=AWSConstants.DEFAULT_IAM_USER,  # @@@
                 region=AWSConstants.DEFAULT_REGION,  # @@@
             ).get_all_running_apps(region=AWSConstants.DEFAULT_REGION)  # @@@
             # ...
-        }, indent=3), None, QHExit.OK)
+        }, heading='all aws apps'), None, QHExit.OK)
 
     @classmethod
     def destroy_all(cls, yes=False):
@@ -362,11 +330,14 @@ class AWSApp(AppBase, AWSResourceBase):
         logger.debug("make args %s", args)
         stdout = ""
         stderr = ""
-        prompt_continue = input("proceed? (y/N): ")
-        if prompt_continue not in ['y', 'Y', 'yes', 'YES']:
+
+        params = self._parse_make(args)
+        _print_dict({k: v for k, v in sorted(params.items())}, f'create app: {self.app_name}')
+        print()
+        prompt_continue = input(f"Proceed creating '{self.app_name}' with these parameters? (y/N): ")
+        if prompt_continue.lower() not in ['y', 'yes']:
             stderr = "aborted"
             return CliResponse(stdout, stderr, QHExit.ABORTED)
-        params = self._parse_make(args)
 
         self.load_default_config(region=params['region'])
         profile = AWSConstants.DEFAULT_IAM_USER
@@ -406,28 +377,35 @@ class AWSApp(AppBase, AWSResourceBase):
     def destroy(self, args: dict) -> CliResponse:
         logger.debug("destroy")
         logger.debug("destroy args %s", args)
-        if 'yes' not in args.keys():
-            prompt_continue = input("proceed? (y/n)")
-            if not prompt_continue == 'y':
-                print("aborted.")
-                rc = QHExit.ABORTED
-                return CliResponse(rc, "", "")
-        self.load_default_config(region=args['region'])
+        params = args
+        params['profile'] = 'quickhost-user'
+
+        hosts = AWSHost(
+            region=params['region'],
+            app_name=self.app_name,
+            profile='quickhost-user'
+        )
+        hosts_describe = hosts.describe()
+        if len(hosts_describe) == 0:
+            return CliResponse(None, f"no hosts running for app '{self.app_name}'", 1)
+        for h in hosts_describe:
+            _print_dict(h.__dict__, heading=self.app_name, underline_char='!!')
+        if 'yes' not in params.keys():
+            prompt_continue = input(f"Proceed destroying app '{self.app_name}'? (y/N)")
+            if prompt_continue.lower() not in ['y', 'yes']:
+                return CliResponse(None, "aborted", QHExit.ABORTED)
+
+        self.load_default_config(region=params['region'])
         kp_destroyed = KP(
             app_name=self.app_name,
-            region=args['region'],
-            profile=args['profile']
+            region=params['region'],
+            profile=params['profile']
         ).destroy()
-        hosts = AWSHost(
-            region=args['region'],
-            app_name=self.app_name,
-            profile=args['profile']
-        )
         hosts_destroyed = hosts.destroy()
         sg_destroyed = SG(
             app_name=self.app_name,
-            region=args['region'],
-            profile=args['profile'],
+            region=params['region'],
+            profile=params['profile'],
             vpc_id=self.vpc_id,
         ).destroy()
         if kp_destroyed and hosts_destroyed and sg_destroyed:
@@ -483,20 +461,14 @@ class AWSApp(AppBase, AWSResourceBase):
         make_params['userdata'] = input_args['userdata']
 
         # ec2 key pem file
-        make_params['ssh_key_filepath'] = self.get_ssh_key_filepath(input_args['ssh_key_filepath'])
+        make_params['ssh_key_filepath'] = self.new_ssh_key_filepath(input_args['ssh_key_filepath'])
         logger.debug("Will create new private key at '%s'", make_params['ssh_key_filepath'])
 
         # the rest
-        if 'dry_run' in flags:
-            make_params['dry_run'] = input_args['dry_run']
         if 'host_count' in flags:
             make_params['host_count'] = int(input_args['host_count'])
         if 'instance_type' in flags:
             make_params['instance_type'] = input_args['instance_type']
-        if 'vpc_id' in flags:
-            make_params['vpc_id'] = input_args['vpc_id']
-        if 'subnet_id' in flags:
-            make_params['subnet_id'] = input_args['subnet_id']
         if 'region' in flags:
             make_params['region'] = input_args['region']
         if 'os' in flags:
@@ -508,14 +480,14 @@ class AWSApp(AppBase, AWSResourceBase):
 
         return make_params
 
-    def get_ssh_key_filepath(self, input_arg: str):
-        if  input_arg is None:
-            _kfname = Path(os.path.expanduser("~")) / ".ssh" / f"{self.app_name}.pem"
+    def new_ssh_key_filepath(self, directory: str):
+        if  directory is None:
+            _kfname = Path(os.path.expanduser("~")) / ".ssh" / f"quickhost-{self.app_name}.pem"
             return str(_kfname.absolute())
         else:
-            _keypath = Path(input_arg)
+            _keypath = Path(directory)
             if _keypath.is_dir():
-                _kfname = _keypath / f"{self.app_name}.pem"
+                _kfname = _keypath / f"quickhost-{self.app_name}.pem"
                 return str(_kfname.absolute())
             else:
                 logger.error('The ssh key filepath you entered is not a directory: %s', _keypath.absolute())

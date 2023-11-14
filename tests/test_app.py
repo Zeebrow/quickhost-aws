@@ -168,49 +168,47 @@ def test_aws_app_load_default_config_qhaws_exception(stub_aws_app_load_default_c
 
 @pytest.fixture
 def patched_aws_app_plugin_destroy(patched_aws_app_init, patched_get_session, patched_get_caller_info):
-    m_host_class = Mock
-    m_host_class.get_all_running_apps =  Mock(return_value=['app-1', 'app-2'], spec=list, )  # classmethod
-
     m_sg = Mock()
-    m_sg.destroy = lambda *args, **kwargs: True
+    m_sg().destroy = lambda *args, **kwargs: True
 
     m_kp = Mock()
-    m_kp.destroy = lambda *args, **kwargs: True
+    m_kp().destroy = lambda *args, **kwargs: True
 
     m_host = Mock()
-    m_host.destroy = lambda *args, **kwargs: True
-
-    m_network = Mock
-    m_network.destroy = lambda *args, **kwargs: True
-    m_network.describe = lambda *args, **kwargs: { 'vpc_id': 'vpc-12345', 'subnet_id': 'subnet-12345' }
+    m_host().get_all_running_apps =  lambda *args, **kwargs: ['app-1', 'app-2']
+    m_host().destroy = lambda *args, **kwargs: True
+    m_host().describe = lambda *args, **kwargs: [HostsDescribe(
+        app_name=FAKE_APP_NAME,
+        ami='some-ami-id',
+        private_ip='9.8.7.6',
+        uptime_hrs=123,
+        instance_id='some-instance-id',
+        instance_type='some-micro',
+        public_ip='1.2.3.4',
+        security_group='sg-12345',
+        state='running',
+        subnet_id='subnet-12345',
+        vpc_id='vpc-12345',
+        platform='Windows',
+    )]
 
     m_iam = Mock()
-    m_iam.destroy = lambda *args, **kwargs: True
-    m_iam.describe = lambda *args, **kwargs: { 'vpc_id': 'vpc-12345', 'subnet_id': 'subnet-12345' }
+    m_iam().destroy = lambda *args, **kwargs: True
+    m_iam().describe = lambda *args, **kwargs: { 'vpc_id': 'vpc-12345', 'subnet_id': 'subnet-12345' }
 
     with patch('quickhost_aws.AWSApp.input', lambda *args, **kwargs: 'yes'), \
-            patch('quickhost_aws.AWSApp.AWSHost', m_host_class), \
+            patch('quickhost_aws.AWSApp.AWSHost', m_host), \
             patch('quickhost_aws.AWSApp.AWSResourceBase._get_session', patched_get_session ), \
             patch('quickhost_aws.AWSApp.SG', m_sg), \
-            patch('quickhost_aws.AWSApp.AWSNetworking', m_network), \
             patch('quickhost_aws.AWSApp.Iam', m_iam), \
             patch('quickhost_aws.AWSApp.KP', m_kp) \
                 :
         app = patched_aws_app_init
-        yield (app, m_host_class, m_sg, m_network, m_iam, m_kp)
+        yield (app, m_host, m_sg, None, m_iam, m_kp)
 
 
-@pytest.fixture
-def stub_aws_app_plugin_destroy(patched_aws_app_plugin_destroy):
-        return patched_aws_app_plugin_destroy
-
-
-def test_aws_app_plugin_destroy(stub_aws_app_plugin_destroy):
-    app = stub_aws_app_plugin_destroy[0](FAKE_APP_NAME)
-    m_hostclass: Mock = stub_aws_app_plugin_destroy[1]
-    m_sg: Mock = stub_aws_app_plugin_destroy[1]
-    m_network: Mock = stub_aws_app_plugin_destroy[2]
-    m_kp: Mock = stub_aws_app_plugin_destroy[3]
+def test_aws_app_plugin_destroy(patched_aws_app_plugin_destroy):
+    app = patched_aws_app_plugin_destroy[0](FAKE_APP_NAME)
     cli_resopnse = app.plugin_destroy({
         'profile': 'some-profile'
     })
@@ -232,19 +230,23 @@ def patched_aws_app_destroy_all(patched_aws_app_init, patched_get_session):
     m_kp.attach_mock(Mock(return_value=True), 'destroy')
     # m_kp.destroy = lambda *args, **kwargs: True
 
-    m_host = Mock
-    # m_host.attach_mock(Mock(return_value=True), 'destroy')
-    # m_host.get_all_running_apps = Mock()
-    # m_host.attach_mock(Mock(return_value=['app-1', 'app-2']), 'get_all_running_apps')
-    m_host.get_all_running_apps =  Mock(return_value=['app-1', 'app-2'], spec=list, )  # classmethod
-    # m_host.destroy = lambda *args, **kwargs: True
-    m_host().destroy = Mock(return_value=True)
-
-    m_network = Mock(spec=AWSNetworking)
-    # m_network.destroy = Mock(return_value=True)
-    # m_network.describe = Mock(return_value={ 'vpc_id': 'vpc-12345', 'subnet_id': 'subnet-12345' })
-    m_network.attach_mock(Mock(return_value=True), 'destroy')
-    m_network.attach_mock(Mock(return_value={ 'vpc_id': 'vpc-12345', 'subnet_id': 'subnet-12345' }), 'describe')
+    m_host = Mock(spec=AWSHost)
+    m_host().get_all_running_apps =  lambda *args, **kwargs: ['app-1', 'app-2']
+    m_host().destroy = lambda *args, **kwargs: True
+    m_host().describe = lambda *args, **kwargs: [HostsDescribe(
+        app_name=FAKE_APP_NAME,
+        ami='some-ami-id',
+        private_ip='9.8.7.6',
+        uptime_hrs=123,
+        instance_id='some-instance-id',
+        instance_type='some-micro',
+        public_ip='1.2.3.4',
+        security_group='sg-12345',
+        state='running',
+        subnet_id='subnet-12345',
+        vpc_id='vpc-12345',
+        platform='Windows',
+    )]
 
     m_iam = Mock(spec=Iam)
     m_iam.destroy = Mock()
@@ -252,7 +254,6 @@ def patched_aws_app_destroy_all(patched_aws_app_init, patched_get_session):
 
     with patch('quickhost_aws.AWSApp.input', lambda *args, **kwargs: 'yes'), \
             patch('quickhost_aws.AWSApp.AWSHost', m_host), \
-            patch('quickhost_aws.AWSApp.AWSHost.get_all_running_apps', lambda *args, **kwargs: ['app-1', 'app-2']), \
             patch('quickhost_aws.AWSApp.AWSResourceBase._get_session', patched_get_session ), \
             patch('quickhost_aws.AWSApp.SG', m_sg), \
             patch('quickhost_aws.AWSApp.Iam', m_iam), \
@@ -274,23 +275,9 @@ def test_aws_app_destroy_all(patched_aws_app_destroy_all):
         'profile': 'some-profile'
     })
 
-    # m_host().assert_called()
-    # print(f"{m_host=}")
-    # print(f"{m_host()=}")
-    # print(f"{m_host.call_count=}")
-    # print(f"{m_host.call_args=}")
-    # print(f"{m_host.call_args_list=}")
-    # print(f"{m_host().destroy=}")
-    # print(f"{m_host.get_all_running_apps.call_count=}")
-    # print(f"{m_sg.call_count=}")
-    # print(f"{m_iam.call_count=}")
-    # print(f"{m_kp.call_count=}")
-    # print('----')
-
     assert cli_resopnse.rc == 0
     assert cli_resopnse.stdout == "Destroyed 2 apps"
     assert cli_resopnse.stderr == None
-
 
 
 @pytest.fixture
@@ -307,7 +294,6 @@ def patched_aws_app_plugin_init(patched_aws_app_admin_init, patched_get_session)
 
     m_network = Mock(spec=AWSNetworking)
     m_network().create = Mock(return_value={'asdf':'asdf'})
-    # m_network.attach_mock(Mock(return_value={ 'vpc_id': 'vpc-12345', 'subnet_id': 'subnet-12345' }), 'describe')
 
     m_iam = Mock(spec=Iam)
     m_iam().create = Mock(return_value={'asdf':'asdf'})
@@ -403,6 +389,8 @@ def patched_aws_app_describe(patched_aws_app_init, patched_get_session):
     m_host().describe = Mock(return_value=[HostsDescribe(
         app_name=FAKE_APP_NAME,
         ami='some-ami-id',
+        private_ip='9.8.7.6',
+        uptime_hrs=123,
         instance_id='some-instance-id',
         instance_type='some-micro',
         public_ip='1.2.3.4',
@@ -412,8 +400,6 @@ def patched_aws_app_describe(patched_aws_app_init, patched_get_session):
         vpc_id='vpc-12345',
         platform='Windows',
     )])
-        # 'ssh_key_filepath': '/some/path/to/ssh/key',
-        # 'platform': 'some-platform'
 
     m_network = Mock(spec=AWSNetworking)
     m_network().describe = lambda *args, **kwargs: {
@@ -460,7 +446,8 @@ def test_aws_app_describe(patched_aws_app_describe):
     app: AWSApp = patched_aws_app_describe[0](app_name=FAKE_APP_NAME)
     cli_resopnse = app.describe(args={
         'region': 'some-region',
-        'show_password': True
+        'show_password': True,
+        'verbosity': 0
     })
 
     assert cli_resopnse.rc == 0
@@ -527,143 +514,9 @@ def test_aws_app_describe_no_hosts(patched_aws_app_describe_no_hosts):
         'show_password': True
     })
 
-    assert cli_resopnse.rc == 0
-    assert cli_resopnse.stdout == 'Done' 
-    assert cli_resopnse.stderr is None
-
-
-@pytest.fixture
-def patched_aws_app_describe_no_netw(patched_aws_app_init, patched_get_session):
-    m_network = Mock(spec=AWSNetworking)
-    m_network().describe = lambda *args, **kwargs: {
-        'vpc_id': None,
-        'subnet_id': None,
-        'rt_id': None,
-        'igw_id': None
-    }
-
-    m_iam = Mock(spec=Iam)
-    m_iam().describe = lambda *args, **kwargs: {
-        'credentials': {
-            'default-region': 'some-region',
-            'credentials-exist': True,
-        },
-        'iam-user': {
-            'name': 'quickhost-user',
-            'arn': 'arn:aws:iam:some-region:012345678901:user/quickhost/quickhost-user',
-            'access-keys': [],
-        },
-        'iam-group': {
-            'arn': 'arn:aws:iam:some-region:012345678901:group/quickhost/quickhost-users',
-            'attached-policies': [],
-        },
-        'iam-policies': {
-            'create': None,
-            'describe': None,
-            'update': None,
-            'destroy': None,
-        },
-    }
-
-    with patch('quickhost_aws.AWSApp.AWSResourceBase._get_session', patched_get_session ), \
-            patch('quickhost_aws.AWSApp.Iam', m_iam), \
-            patch('quickhost_aws.AWSApp.AWSNetworking', m_network) \
-                :
-        app = patched_aws_app_init
-        yield (app, m_network,  None, None, None, m_iam, None)
-
-
-@pytest.mark.xfail
-def test_aws_app_describe_no_netw(patched_aws_app_describe_no_netw):
-    app: AWSApp = patched_aws_app_describe_no_netw[0](app_name=FAKE_APP_NAME)
-    cli_resopnse = app.describe(args={ 'region': 'some-region', })
-
     assert cli_resopnse.rc == 1
     assert cli_resopnse.stdout is None
     assert cli_resopnse.stderr is not None
-    assert cli_resopnse.stderr != 'Unknown error'
-
-
-@pytest.fixture
-def patched_aws_app_describe_no_iam(patched_aws_app_init, patched_get_session):
-    m_network = Mock(spec=AWSNetworking)
-    m_network().describe = lambda *args, **kwargs: {
-        'vpc_id': 'vpc-12345',
-        'subnet_id': 'subnet-12345',
-        'rt_id': 'rt-12345',
-        'igw_id': 'igw-12345'
-    }
-
-    m_iam = Mock(spec=Iam)
-    m_iam().describe = lambda *args, **kwargs: {
-        'credentials': {
-            'default-region': 'some-region',
-            'credentials-exist': False,
-        },
-        'iam-user': {
-            'name': '',
-            'arn': '',
-            'access-keys': [],
-        },
-        'iam-group': {
-            'arn': '',
-            'attached-policies': [],
-        },
-        'iam-policies': {
-            'create': None,
-            'describe': None,
-            'update': None,
-            'destroy': None,
-        },
-    }
-
-    with patch('quickhost_aws.AWSApp.AWSResourceBase._get_session', patched_get_session ), \
-            patch('quickhost_aws.AWSApp.Iam', m_iam), \
-            patch('quickhost_aws.AWSApp.AWSNetworking', m_network) \
-                :
-        app = patched_aws_app_init
-        yield (app, m_network,  None, None, None, m_iam, None)
-
-
-def test_aws_app_describe_no_iam(patched_aws_app_describe_no_iam):
-    app: AWSApp = patched_aws_app_describe_no_iam[0](app_name=FAKE_APP_NAME)
-    cli_resopnse = app.describe(args={ 'region': 'some-region', })
-    print(cli_resopnse)
-
-    assert cli_resopnse.rc == 1
-    assert cli_resopnse.stdout is None
-    assert cli_resopnse.stderr is not None
-    assert cli_resopnse.stderr != 'Unknown error'
-
-@pytest.fixture
-def patched_aws_app_describe_no_netw_or_iam(patched_aws_app_init, patched_get_session):
-    m_network = Mock(spec=AWSNetworking)
-    m_network().describe = lambda *args, **kwargs: {
-        'vpc_id': None,
-        'subnet_id': None,
-        'rt_id': None,
-        'igw_id': None
-    }
-
-    m_iam = Mock(spec=Iam)
-    m_iam().describe = lambda *args, **kwargs: None
-
-    with patch('quickhost_aws.AWSApp.AWSResourceBase._get_session', patched_get_session ), \
-            patch('quickhost_aws.AWSApp.Iam', m_iam), \
-            patch('quickhost_aws.AWSApp.AWSNetworking', m_network) \
-                :
-        app = patched_aws_app_init
-        yield (app, m_network,  None, None, None, m_iam, None)
-
-
-def test_aws_app_describe_no_netw_or_iam(patched_aws_app_describe_no_iam):
-    app: AWSApp = patched_aws_app_describe_no_iam[0](app_name=FAKE_APP_NAME)
-    cli_resopnse = app.describe(args={ 'region': 'some-region', })
-
-    assert cli_resopnse.rc == 1
-    assert cli_resopnse.stdout is None
-    assert cli_resopnse.stderr is not None
-    assert cli_resopnse.stderr != 'Unknown error'
 
 
 @pytest.fixture
@@ -721,19 +574,12 @@ def test_aws_app_create(patched_aws_app_create):
         'host_count': 1,
         'instance_type': 'some-instance-type',
     })
-        # 'sgid': '',
-        # 'subnet_id': '',
-        # 'key_name': '',
-        # 'os': 'al2023',
-        # 'image_id': 'ami-1234567890EXAMPLE',
-        # 'disk_size': 30
-    print(cli_resopnse)
     assert cli_resopnse.rc == 0
 
 
 
 @pytest.fixture
-def patched_aws_app_get_ssh_key_filepath(patched_get_session, patched_get_caller_info):
+def patched_aws_app_new_ssh_key_filepath(patched_get_session, patched_get_caller_info):
     r = patched_get_session().resource("ec2")
     sts = patched_get_session().client("sts")
     ec2_r_stubber = Stubber(r.meta.client)
@@ -763,18 +609,18 @@ def patched_aws_app_get_ssh_key_filepath(patched_get_session, patched_get_caller
         app = AWSApp
         yield app
 
-def test_aws_app_get_ssh_key_filepath(patched_aws_app_get_ssh_key_filepath, aws_files_qh_and_ssh):
-    app = patched_aws_app_get_ssh_key_filepath(FAKE_APP_NAME)
-    assert app.get_ssh_key_filepath(None) == str(Path(aws_files_qh_and_ssh[1].home_dir) / '.ssh' / f"{FAKE_APP_NAME}.pem")
+def test_aws_app_new_ssh_key_filepath(patched_aws_app_new_ssh_key_filepath, aws_files_qh_and_ssh):
+    app = patched_aws_app_new_ssh_key_filepath(FAKE_APP_NAME)
+    assert app.new_ssh_key_filepath(None) == str(Path(aws_files_qh_and_ssh[1].home_dir) / '.ssh' / f"quickhost-{FAKE_APP_NAME}.pem")
 
 
-def test_aws_app_get_ssh_key_filepath_path_exists(patched_aws_app_get_ssh_key_filepath, aws_files_qh_and_ssh):
-    app = patched_aws_app_get_ssh_key_filepath(FAKE_APP_NAME)
+def test_aws_app_new_ssh_key_filepath_path_exists(patched_aws_app_new_ssh_key_filepath, aws_files_qh_and_ssh):
+    app = patched_aws_app_new_ssh_key_filepath(FAKE_APP_NAME)
     tgt_dir = str(Path(aws_files_qh_and_ssh[1].home_dir) / '.ssh')
-    assert app.get_ssh_key_filepath(tgt_dir) == str(Path(tgt_dir) /  f"{FAKE_APP_NAME}.pem")
+    assert app.new_ssh_key_filepath(tgt_dir) == str(Path(tgt_dir) /  f"quickhost-{FAKE_APP_NAME}.pem")
 
-def test_aws_app_get_ssh_key_filepath_path_dir_DNE_raises(patched_aws_app_get_ssh_key_filepath, aws_files_qh_and_ssh):
-    app = patched_aws_app_get_ssh_key_filepath(FAKE_APP_NAME)
+def test_aws_app_new_ssh_key_filepath_path_dir_DNE_raises(patched_aws_app_new_ssh_key_filepath, aws_files_qh_and_ssh):
+    app = patched_aws_app_new_ssh_key_filepath(FAKE_APP_NAME)
     tgt_dir = Path('/somewhere') / 'dne'
     with pytest.raises(SystemExit):
-        app.get_ssh_key_filepath(tgt_dir)
+        app.new_ssh_key_filepath(tgt_dir)

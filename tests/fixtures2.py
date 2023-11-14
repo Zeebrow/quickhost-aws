@@ -4,6 +4,7 @@ from pathlib import Path
 from textwrap import dedent
 from collections import namedtuple
 import logging
+from typing import Any
 
 import pytest
 from pytest import MonkeyPatch
@@ -11,6 +12,7 @@ from pytest import MonkeyPatch
 from botocore.stub import Stubber
 from mock import patch, Mock
 import boto3
+
 
 
 FAKE_APP_NAME = 'test-app-name'
@@ -216,3 +218,4 @@ def aws_files_qh_and_ssh(aws_files: FakeAWSFiles):
     ssh_files = FakeSSHFiles(home_dir=str(aws_files.home_dir), existing_pub_file=str(existing_pub_file.absolute()), existing_pem_file=str(existing_pem_file.absolute()))
 
     return aws_files, ssh_files
+

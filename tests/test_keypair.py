@@ -149,7 +149,7 @@ def stub_keypair_create_already_exists_raises(patched_get_session, patched_kp):
 
 def test_keypair_create_already_exists_raises(stub_keypair_create_already_exists_raises):
     with pytest.raises(SystemExit):
-        stub_keypair_create_already_exists_raises.create()
+        stub_keypair_create_already_exists_raises.create(ssh_key_filepath='/some/useless/dir/')
 
 
 @pytest.fixture
@@ -160,14 +160,15 @@ def stub_keypair_create(ssh_dir, patched_get_session, patched_kp):
         ec2_r_stubber = Stubber(r.meta.client)
         ec2_c_stubber = Stubber(s)
 
-        aws_keypair_id = "some_key_id"
         aws_keypair_name = "some_key_name"
+        aws_keypair_id = "some_key_id"
         aws_key_fingerprint = "1f:51:ae:28:bf:89:e9:d8:1f:25:5d:37:2d:7d:b8:ca:9f:f5:f1:6f"
         aws_key_material = 'asdf'
 
         ec2_c_stubber.add_client_error('describe_key_pairs', 'InvalidKeyPair.NotFound')
         ec2_c_stubber.add_response('create_key_pair',
             {
+                'KeyName': aws_keypair_name,
                 'KeyMaterial': aws_key_material,
                 'KeyPairId': aws_keypair_id,
                 'KeyFingerprint': aws_key_fingerprint,
@@ -192,6 +193,7 @@ def stub_keypair_create(ssh_dir, patched_get_session, patched_kp):
 
 
 def test_keypair_create(ssh_dir: FakeSSHFiles, stub_keypair_create: AWSKeypair.KP):
+    aws_keypair_name = "some_key_name"
     aws_keypair_id = "some_key_id"
     aws_key_fingerprint = "1f:51:ae:28:bf:89:e9:d8:1f:25:5d:37:2d:7d:b8:ca:9f:f5:f1:6f"
     aws_key_material = 'asdf'
@@ -205,8 +207,8 @@ def test_keypair_create(ssh_dir: FakeSSHFiles, stub_keypair_create: AWSKeypair.K
     r = stub_keypair_create( new_priv_key_str ).create(ssh_key_filepath=new_priv_key_str)
 
     assert r == {
-        'key_name': FAKE_APP_NAME,
-        'key_filepath': new_priv_key_str,
+        'key_name': aws_keypair_name,
+        'ssh_key_filepath': new_priv_key_str,
         'key_id': aws_keypair_id,
         'key_fingerprint': aws_key_fingerprint,
     }

@@ -19,6 +19,7 @@ import logging
 from datetime import datetime
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime
 
 from botocore.exceptions import ClientError
 import boto3
@@ -40,15 +41,19 @@ class HostsDescribe(dict):
     instance_id: str
     instance_type: str
     public_ip: str
+    private_ip: str
     subnet_id: str
     vpc_id: str
     state: str
     platform: str
+    uptime_hrs: str
+
 
 class AWSHost(AWSResourceBase):
     """
     Class for AWS host operations.
     """
+
     def __init__(self, app_name, profile, region):
         session = self._get_session(profile=profile, region=region)
         self.region = region
@@ -57,7 +62,7 @@ class AWSHost(AWSResourceBase):
         self.app_name = app_name
         self.host_count = None
 
-    def create(self, num_hosts, instance_type, sgid, subnet_id, userdata, key_name, _os, ssh_key_filepath, disk_size=None, dry_run=False):
+    def create(self, num_hosts, instance_type, sgid, subnet_id, userdata, key_name, _os, ssh_key_filepath, disk_size=None):
         rtn = {
             "region": self.region,
             "num_hosts": num_hosts,
@@ -87,7 +92,7 @@ class AWSHost(AWSResourceBase):
             'MaxCount': int(num_hosts),
             'MinCount': 1,
             'DisableApiTermination': False,
-            'DryRun': dry_run,
+            'DryRun': False,
             'InstanceInitiatedShutdownBehavior': 'terminate',
             'NetworkInterfaces': [
                 {
@@ -121,7 +126,7 @@ class AWSHost(AWSResourceBase):
             tgt_disk_size = latest_image['ami_disk_size']
         rtn['disk_size'] = tgt_disk_size
 
-        response = self.client.run_instances(
+        self.client.run_instances(
             **run_instances_params,
             BlockDeviceMappings=[
                 {
@@ -130,8 +135,9 @@ class AWSHost(AWSResourceBase):
                 }
             ])
 
-        r_cleaned = quickhost.scrub_datetime(response)
         self.wait_for_hosts_to_start(num_hosts)
+
+        # @@@ move to function in AWSApp
         ssh_strings = []
         app_insts_thingy = self._get_app_instances()
         for i in app_insts_thingy:
@@ -151,7 +157,6 @@ class AWSHost(AWSResourceBase):
         return rtn
 
     def describe(self) -> t.List[HostsDescribe]:
-        logger.debug("AWSHost.describe")
         instances = []
         try:
             app_hosts = self.client.describe_instances(
@@ -175,15 +180,13 @@ class AWSHost(AWSResourceBase):
             return instances
 
     def destroy(self) -> bool:
-        logger.debug("destroying instnaces: ")
         tgt_instances = self.get_instance_ids('running')
-        if tgt_instances is None:
+        logger.debug("destroying instnaces: %s", tgt_instances)
+        if len(tgt_instances) == 0:
             logger.debug("No instances found for app '%s'", self.app_name)
-            return None
+            return True
         try:
-            response = self.client.terminate_instances(
-                InstanceIds=tgt_instances
-            )
+            self.client.terminate_instances(InstanceIds=tgt_instances)
         except ClientError as e:
             logger.error(e)
             return False
@@ -227,7 +230,7 @@ class AWSHost(AWSResourceBase):
             logger.debug("%s running apps found.", len(_rtn))
             return _rtn
 
-    def _get_app_instances(self) -> t.Optional[t.List[t.Any]]:
+    def _get_app_instances(self):
         """
         TODO: WHy is this optional??
         NOTE: to get 'describe' data, feed the output of this into self._parse_host_output()
@@ -244,13 +247,14 @@ class AWSHost(AWSResourceBase):
         instance_ids = []
         for r in all_hosts['Reservations']:
             for host in r['Instances']:
-                app_instances.append(quickhost.scrub_datetime(host))
+                # app_instances.append(quickhost.scrub_datetime(host))
+                app_instances.append(host)
                 inst = self._parse_host_output(host=host)
                 instance_ids.append(inst.instance_id)
         else:
             return app_instances
 
-    def get_instance_ids(self, *states):
+    def get_instance_ids(self, *states) -> t.List[str]:
         """Given the app_name, returns the instance id off all instances with a State of 'running'"""
         logger.debug("states=%s", states)
         app_instances = []
@@ -267,11 +271,10 @@ class AWSHost(AWSResourceBase):
         for r in all_hosts['Reservations']:
             for host in r['Instances']:
                 if host['State']['Name'] in states:
-                    app_instances.append(quickhost.scrub_datetime(host))
+                    # app_instances.append(quickhost.scrub_datetime(host))
+                    app_instances.append(host)
                     inst = self._parse_host_output(host=host)
                     instance_ids.append(inst.instance_id)
-        if instance_ids == []:
-            return None
         return instance_ids
 
     def get_latest_image(self, os='amazon-linux-2'):
@@ -280,20 +283,20 @@ class AWSHost(AWSResourceBase):
         EBS General Purpose (SSD) or Magnetic storage
         """
         filterset = [
-            _new_filter('state', 'available'),
-            _new_filter('architecture', 'x86_64'),
+            new_image_filter('state', 'available'),
+            new_image_filter('architecture', 'x86_64'),
         ]
         if os == 'al2023':
-            filterset.append(_new_filter('name', 'al2023-ami-2023.*-kernel-6.?-x86_64'))
+            filterset.append(new_image_filter('name', 'al2023-ami-2023.*-kernel-6.?-x86_64'))
         elif os == 'amazon-linux-2':
             #e.g. amzn2-ami-hvm-2.0.20230307.0-x86_64-gp2
-            filterset.append(_new_filter('name', 'amzn2-ami-hvm-2.0.*-x86_64-gp2'),)
+            filterset.append(new_image_filter('name', 'amzn2-ami-hvm-2.0.*-x86_64-gp2'))
         elif os == 'ubuntu':
-            filterset.append(_new_filter('name', '*ubuntu*22.04*'),)
+            filterset.append(new_image_filter('name', '*ubuntu*22.04*'))
         elif os == 'windows':
-            filterset.append(_new_filter('name', 'Windows_Server-2022-English-Full-Base*'),)
+            filterset.append(new_image_filter('name', 'Windows_Server-2022-English-Full-Base*'))
         elif os == 'windows-core':
-            filterset.append(_new_filter('name', 'Windows_Server-2022-English-Core-Base*'),)
+            filterset.append(new_image_filter('name', 'Windows_Server-2022-English-Core-Base*'))
         else:
             raise Exception(f"no such image type '{os}'")
         response = self.client.describe_images(
@@ -313,17 +316,30 @@ class AWSHost(AWSResourceBase):
         Marshal the output of boto3's "ec2.describe_instances()" Reservations.Instances into a python class.
         If a property cannot be retrieved, it will be None.
         """
+
+        if isinstance(host.get('LaunchTime'), datetime):
+            uptime_hrs = (datetime.utcnow() - host.get('LaunchTime').replace(tzinfo=None)).total_seconds() // 3600
+        elif isinstance(host.get('LaunchTime'), str):
+            # got host dict from scrub_datetime
+            logger.debug("WARNING: got str in LaunchTime field during describe()")
+            uptime_hrs = (datetime.utcnow() - datetime.strptime(host.get('LaunchTime'), "%Y-%M-%d %H:%m:%S").replace(tzinfo=None)).total_seconds() // 3600
+        else:
+            logger.warning("Could not resolve LaunchTime (type: %s) from host response.", type(host.get('LaunchTime')))
+            uptime_hrs = 'n/a'
+
         return HostsDescribe(
             app_name=self.app_name,
+            state=host['State']['Name'],
+            uptime_hrs=uptime_hrs,
+            platform=host.get('PlatformDetails'),
+            public_ip=host.get('PublicIpAddress'),
+            private_ip=host.get('PrivateIpAddress'),
             ami=host.get('ImageId'),
             security_group=host.get('SecurityGroups')[0]['GroupId'],  # @@@ you can do better
             instance_id=host.get('InstanceId'),
             instance_type=host.get('InstanceType'),
-            public_ip=host.get('PublicIpAddress'),
             subnet_id=host.get('SubnetId'),
             vpc_id=host.get('VpcId'),
-            state=host['State']['Name'],
-            platform=host.get('PlatformDetails'),
         )
 
     def get_userdata(self, filename: str):
@@ -419,9 +435,9 @@ class AWSHost(AWSResourceBase):
                 other_hosts, len(ready_hosts), tgt_count, ready_hosts, len(waiting_on_hosts), waiting_on_hosts
             ), end='')
             time.sleep(1)
-    
 
-def _new_filter(name: str, values: t.Union[t.List, str]):
+
+def new_image_filter(name: str, values: t.Union[t.List, str]):
     if (isinstance(values, str)):
         return {'Name': name, 'Values': [values]}
     elif (isinstance(values, list)):

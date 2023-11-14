@@ -4,6 +4,7 @@ from botocore.stub import Stubber
 from mock import patch, MagicMock
 import tempfile
 import os
+from datetime import datetime
 
 from quickhost_aws import AWSHost
 
@@ -64,9 +65,11 @@ def stub_host_describe_one_result(patched_get_session, patched_aws_host):
         'Reservations': [ {'Instances': [
             {
                 'InstanceId': 'asdf',
+                'LaunchTime': datetime(year=2023, month=1, day=1, hour=1, minute=1, second=1),
                 'InstanceType': 'asdf',
                 'KeyName': 'asdf',
                 'PublicIpAddress': '1.2.3.4',
+                'PrivateIpAddress': '9.8.7.6',
                 'SubnetId': 'asdf',
                 'VpcId': 'asdf',
                 'Platform': 'ecks-d',
@@ -90,6 +93,8 @@ def test_host_describe_one_result(stub_host_describe_one_result: AWSHost.AWSHost
     assert d[0].security_group == 'sg_id'
     assert d[0].platform == 'ecks-d'
     assert d[0].public_ip == '1.2.3.4'
+    assert d[0].private_ip == '9.8.7.6'
+    assert d[0].uptime_hrs
 
 
 @pytest.fixture
@@ -229,9 +234,11 @@ def stub_host_create(patched_get_session, patched_aws_host):
         'Reservations': [ {'Instances': [
             {
                 'InstanceId': 'asdf',
+                'LaunchTime': datetime(year=2023, month=1, day=1, hour=1, minute=1, second=1),
                 'InstanceType': 'asdf',
                 'KeyName': 'asdf',
                 'PublicIpAddress': '1.2.3.4',
+                'PrivateIpAddress': '9.8.7.6',
                 'SubnetId': 'asdf',
                 'VpcId': 'asdf',
                 'Platform': 'ecks-d',
@@ -317,7 +324,6 @@ def test_host_create(stub_host_create: AWSHost.AWSHost):
     with patch('quickhost_aws.AWSHost.time.sleep', patched_sleep):
         assert stub_host_create.create(
             disk_size=30,
-            dry_run=False,
             instance_type='',
             key_name='',
             num_hosts=1,
@@ -375,9 +381,11 @@ def stub_host_destroy(patched_get_session, patched_aws_host):
         'Reservations': [ {'Instances': [
             {
                 'InstanceId': 'asdf',
+                'LaunchTime': datetime(year=2023, month=1, day=1, hour=1, minute=1, second=1),
                 'InstanceType': 'asdf',
                 'KeyName': 'asdf',
                 'PublicIpAddress': '1.2.3.4',
+                'PrivateIpAddress': '9.8.7.6',
                 'SubnetId': 'asdf',
                 'VpcId': 'asdf',
                 'Platform': 'ecks-d',
@@ -427,6 +435,7 @@ def stub_get_all_running_apps(patched_get_session, patched_aws_host):
         'Reservations': [ {'Instances': [
             {
                 'InstanceId': 'asdf',
+                'LaunchTime': datetime(year=2023, month=1, day=1, hour=1, minute=1, second=1),
                 'InstanceType': 'asdf',
                 'KeyName': 'asdf',
                 'PublicIpAddress': '1.2.3.4',
