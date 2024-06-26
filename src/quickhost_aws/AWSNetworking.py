@@ -17,7 +17,7 @@ import logging
 
 from botocore.exceptions import ClientError
 
-from quickhost import APP_CONST as QH_C, scrub_datetime
+from quickhost import APP_CONST as QH_C
 
 from .utilities import get_single_result_id, QuickhostUnauthorized, quickmemo, TagSpec, DefaultFilter, DefaultTag
 from .AWSResource import AWSResourceBase

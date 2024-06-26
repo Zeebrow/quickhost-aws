@@ -16,7 +16,6 @@
 import logging
 import os
 from pathlib import Path
-import json
 from textwrap import dedent
 import sys
 
@@ -151,8 +150,6 @@ class AWSApp(AppBase, AWSResourceBase):
         whoami['region'] = session.region_name
         whoami['profile'] = session.profile_name
         user_name = whoami['Arn'].split(":")[5].split("/")[-1]
-        user_id = whoami['UserId']
-        account = whoami['Account']
         confirmation_line = dedent(f"""\
             Initializing quickhost with the following parameters:
             Target account:     {whoami['Account']}
@@ -191,7 +188,6 @@ class AWSApp(AppBase, AWSResourceBase):
         else:
             return CliResponse('Done', None, QHExit.OK)
 
-
     def describe(self, args: dict) -> CliResponse:
         logger.debug('describe')
         logger.debug("describe args %s", args)
@@ -215,7 +211,7 @@ class AWSApp(AppBase, AWSResourceBase):
             profile=params['profile'],
         )
         kp_describe = kp.describe()
-        logger.debug("kp_describe=%s",kp_describe)
+        logger.debug("kp_describe=%s", kp_describe)
         for h in hosts_describe:
             h['ssh_key_filepath'] = kp_describe['ssh_key_filepath']
 
@@ -241,7 +237,7 @@ class AWSApp(AppBase, AWSResourceBase):
                 region=params['region'],
                 profile=params['profile'],
             ).describe()
-            logger.debug("iam_vals=%s",iam_vals)
+            logger.debug("iam_vals=%s", iam_vals)
             iam_print = {}
 
             iam_print['credentials check'] = 'ok' if iam_vals['credentials']['credentials-exist'] else 'not ok'
@@ -476,12 +472,12 @@ class AWSApp(AppBase, AWSResourceBase):
         if 'disk_size' in flags:
             make_params['disk_size'] = int(input_args['disk_size'])
         else:
-            make_params['disk_size']  = None
+            make_params['disk_size'] = None
 
         return make_params
 
     def new_ssh_key_filepath(self, directory: str):
-        if  directory is None:
+        if directory is None:
             _kfname = Path(os.path.expanduser("~")) / ".ssh" / f"quickhost-{self.app_name}.pem"
             return str(_kfname.absolute())
         else:

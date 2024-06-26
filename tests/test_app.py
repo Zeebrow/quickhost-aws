@@ -379,6 +379,7 @@ def patched_aws_app_describe(patched_aws_app_init, patched_get_session):
     m_sg().describe = lambda *args, **kwargs: {'asdf':'sg-asdf'}
 
     m_kp = Mock()
+    m_kp().windows_get_password = lambda *args, **kwargs: 'xxxxxxxxxxxxxxx'
     m_kp().describe = lambda *args, **kwargs: {
         'key_id': 'some-key-id',
         'key_fingerprint': 'aa:bb:cc:dd:ee',

@@ -19,7 +19,6 @@ import logging
 from datetime import datetime
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
 
 from botocore.exceptions import ClientError
 import boto3
@@ -211,9 +210,9 @@ class AWSHost(AWSResourceBase):
         app_names = []
         for r in all_running_hosts['Reservations']:
             for host in r['Instances']:
-                for t in host['Tags']:
-                    if t['Key'] == 'Name':
-                        app_names.append(t['Value'])
+                for tag in host['Tags']:
+                    if tag['Key'] == 'Name':
+                        app_names.append(tag['Value'])
         if len(app_names) == 0:
             logger.debug("no running apps found.")
             return None
@@ -289,7 +288,7 @@ class AWSHost(AWSResourceBase):
         if os == 'al2023':
             filterset.append(new_image_filter('name', 'al2023-ami-2023.*-kernel-6.?-x86_64'))
         elif os == 'amazon-linux-2':
-            #e.g. amzn2-ami-hvm-2.0.20230307.0-x86_64-gp2
+            # e.g. amzn2-ami-hvm-2.0.20230307.0-x86_64-gp2
             filterset.append(new_image_filter('name', 'amzn2-ami-hvm-2.0.*-x86_64-gp2'))
         elif os == 'ubuntu':
             filterset.append(new_image_filter('name', '*ubuntu*22.04*'))
@@ -419,7 +418,7 @@ class AWSHost(AWSResourceBase):
             ))
             for r in app_hosts['Reservations']:
                 for host in r['Instances']:
-                    if host['State']['Name'] ==  'running':
+                    if host['State']['Name'] == 'running':
                         if not (host['InstanceId'] in ready_hosts):
                             if host['InstanceId'] in waiting_on_hosts:  # should always be True
                                 ready_hosts.append(host['InstanceId'])

@@ -19,7 +19,6 @@ from configparser import ConfigParser
 from pathlib import Path
 
 from botocore.exceptions import ClientError
-import boto3
 
 from quickhost import scrub_datetime
 
@@ -309,7 +308,7 @@ class Iam(AWSResourceBase):
         #     return rtn  # return before trying to get nogroup's policies.
         return
 
-    #@@@ default region
+    # @@@ default region
     def _create_user_config(self, region='us-east-1', output='json'):
         current_credentials = self.describe()
         if current_credentials['credentials']['default-region'] is None:

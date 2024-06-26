@@ -30,11 +30,14 @@ logger = logging.getLogger(__name__)
 DefaultFilter = { 'Name': 'tag:Name', 'Values': [ QH_C.DEFAULT_APP_NAME ] }
 DefaultTag = { 'Value': QH_C.DEFAULT_APP_NAME, 'Key': 'Name' }
 
+
 def QH_Tag(app_name):
     return { 'Key': 'quickhost', 'Value': app_name }
 
+
 def TagSpec(resource):
     return { 'ResourceType': resource, 'Tags': [ { 'Value': QH_C.DEFAULT_APP_NAME, 'Key': 'Name' } ] }
+
 
 def get_single_result_id(resource_type, resource, plural=True):
     """
@@ -105,6 +108,7 @@ def quickmemo(f):
 class QuickhostAWSException(Exception):
     pass
 
+
 class QuickhostUnauthorized(Exception):
     def fmt(self):
         return "{}:({}) {}".format(
@@ -139,11 +143,13 @@ class Arn:
             return False
         return True
 
+
 def get_my_public_ip() -> str:
     import urllib
     with urllib.request.urlopen("https://ipv4.icanhazip.com") as r:
         html = r.read()
         return html.decode('utf-8').strip() + "/32"
+
 
 def _print_dict(d: dict, heading=None, underline_char='*') -> None:
     if d is None:
@@ -152,7 +158,7 @@ def _print_dict(d: dict, heading=None, underline_char='*') -> None:
     fill_char = '.'
     if heading:
         sys.stdout.write(f"\033[32m{heading}\033[0m\n")
-        print(underline_char * (len(heading)//len(underline_char)))
+        print( underline_char * (len(heading) // len(underline_char)) )
 
     if os.isatty(1):
         if os.get_terminal_size()[0] > 80:
@@ -167,7 +173,7 @@ def _print_dict(d: dict, heading=None, underline_char='*') -> None:
                     k, v, fc=fill_char, align='<', width=termwidth
                 ))
         if heading:
-            print(underline_char * (len(heading)//len(underline_char)))
+            print( underline_char * (len(heading) // len(underline_char)) )
             print()
     else:
         logger.warning("There's nowhere to show your results!")

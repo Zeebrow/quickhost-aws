@@ -13,23 +13,18 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from pathlib import Path
 from argparse import SUPPRESS, ArgumentParser
 import logging
 from dataclasses import dataclass
 import typing as t
 
-from quickhost import APP_CONST as C, ParserBase
+from quickhost import ParserBase
 from .constants import AWSConstants
 
 logger = logging.getLogger(__name__)
 
 
 class AWSParser(ParserBase):
-    def __init__(self, config_file=C.DEFAULT_CONFIG_FILEPATH):
-        self.config_file = Path(config_file).absolute()
-        if not self.config_file.exists():
-            raise RuntimeError(f"no such file: {self.config_file}")
 
     def add_subparsers(self, parser: ArgumentParser) -> None:
         """
@@ -53,17 +48,11 @@ class AWSParser(ParserBase):
         self.add_destroy_all_parser_arguments(destroy_all_parser)
         self.add_destroy_plugin_parser_arguments(destroy_plugin_parser)
 
-    def add_destroy_all_parser_arguments(self, parser: ArgumentParser):
+    def add_destroy_all_parser_arguments(self, parser: ArgumentParser) -> None:
         parser.add_argument(
             "-y", "--yes",
             action='store_true',
             help="Force deletion without prompting for confirmation")
-        # parser.add_argument(
-        #     "--profile",
-        #     required=False,
-        #     action='store',
-        #     default=AWSConstants.DEFAULT_IAM_USER,
-        #     help="Profile of an admin AWS account used to destroy quickhost apps")
         parser.add_argument(
             "--region",
             required=False,
@@ -72,7 +61,7 @@ class AWSParser(ParserBase):
             default=AWSConstants.DEFAULT_REGION,
             help="AWS region in which to destroy quickhost apps")
 
-    def add_init_parser_arguments(self, parser: ArgumentParser):
+    def add_init_parser_arguments(self, parser: ArgumentParser) -> None:
         parser.add_argument(
             "--admin-profile",
             required=True,
@@ -86,7 +75,7 @@ class AWSParser(ParserBase):
             default=AWSConstants.DEFAULT_REGION,
             help="AWS region used to create quickhost resources")
 
-    def add_destroy_plugin_parser_arguments(self, parser: ArgumentParser):
+    def add_destroy_plugin_parser_arguments(self, parser: ArgumentParser) -> None:
         parser.add_argument(
             "-y",
             "--yes",
@@ -169,7 +158,7 @@ class AWSParser(ParserBase):
             default=SUPPRESS,
             help="(UNTESTED) Size in GiB of root volume (30 or less qualifies for free tier)")
 
-    def add_describe_parser_arguments(self, parser: ArgumentParser):
+    def add_describe_parser_arguments(self, parser: ArgumentParser) -> None:
         parser.add_argument(
             "app_name",
             default=SUPPRESS,
@@ -186,10 +175,10 @@ class AWSParser(ParserBase):
             action='store_true',
             help="For Windows instances, show the Administrator password in plaintext")
 
-    def add_update_parser_arguments(self, parser: ArgumentParser):
+    def add_update_parser_arguments(self, parser: ArgumentParser) -> None:
         pass
 
-    def add_destroy_parser_arguments(self, parser: ArgumentParser):
+    def add_destroy_parser_arguments(self, parser: ArgumentParser) -> None:
         parser.add_argument(
             "app_name",
             default=SUPPRESS,
@@ -206,6 +195,7 @@ class DestroyArgs:
     app_name: str
     profile: str
     region: t.Optional[str] = None
+
 
 @dataclass
 class PluginDestroyArgs:
@@ -227,21 +217,25 @@ class MakeArgs:
     user_data: t.Optional[str] = None
     disk_size: t.Optional[int] = None  # supressed
 
+
 @dataclass
 class DescribeArgs:
     app_name: str
     region: t.Optional[str] = AWSConstants.DEFAULT_REGION
     show_password: bool = False
 
+
 @dataclass
 class DestroyAllArgs:
     yes: bool = False
     profile: str = AWSConstants.DEFAULT_IAM_USER
 
+
 @dataclass
 class InitArgs:
     admin_profile: str = AWSConstants.DEFAULT_IAM_USER
     region: str = AWSConstants.DEFAULT_REGION
+
 
 @dataclass
 class DestroyPluginArgs:

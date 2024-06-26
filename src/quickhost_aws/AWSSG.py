@@ -18,8 +18,6 @@ import logging
 
 import botocore.exceptions
 
-from quickhost import scrub_datetime
-
 from .utilities import QH_Tag
 from .AWSResource import AWSResourceBase
 
@@ -117,7 +115,7 @@ class SG(AWSResourceBase):
                     'IpRanges': [ { 'CidrIp': cidr, 'Description': 'made with quickhosts' } for cidr in cidrs ],
                     'ToPort': int(port),
                 })
-            response = self.client.authorize_security_group_ingress(
+            self.client.authorize_security_group_ingress(
                 GroupId=self.sgid,
                 IpPermissions=perms,
                 DryRun=False

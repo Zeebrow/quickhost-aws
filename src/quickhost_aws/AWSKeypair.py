@@ -14,7 +14,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-import json
 from pathlib import Path
 import os
 import base64
@@ -72,7 +71,6 @@ class KP(AWSResourceBase):
             logger.critical("Exception creating ssh keyfile: %s", e, exc_info=True)
             raise SystemExit(1)
 
-
     def create(self, ssh_key_filepath) -> bool:
         """Make a new ec2 keypair named for app"""
 
@@ -80,8 +78,7 @@ class KP(AWSResourceBase):
 
         if existing_key_pair['key_id'] is not None:
             # NOTE: You can't retreive key material unless you are creating the key
-            logger.error("EC2 key pair already exists in AWS: (id=%s, fingerprint=%s, region=%s). You must delete the key before trying again",
-                existing_key_pair['key_id'], existing_key_pair['key_fingerprint'], '@@@ uhhhh this is important...')
+            logger.error("EC2 key pair already exists in AWS: (id=%s, fingerprint=%s, region=%s). You must delete the key before trying again", existing_key_pair['key_id'], existing_key_pair['key_fingerprint'], '@@@ uhhhh this is important...')
             raise SystemExit(1)  # Why?
         else:
             new_key = self.client.create_key_pair(
@@ -92,8 +89,8 @@ class KP(AWSResourceBase):
                     {
                         'ResourceType': 'key-pair',
                         'Tags': [
-                            { 'Key': C.DEFAULT_APP_NAME, 'Value': self.app_name }, 
-                            { 'Key': 'ssh_key_filepath', 'Value': ssh_key_filepath }, 
+                            { 'Key': C.DEFAULT_APP_NAME, 'Value': self.app_name },
+                            { 'Key': 'ssh_key_filepath', 'Value': ssh_key_filepath },
                         ]
                     },
                 ],
@@ -120,7 +117,7 @@ class KP(AWSResourceBase):
                 DryRun=False,
                 IncludePublicKey=True
             )
-            
+
             rtn['key_id'] = existing_key['KeyPairs'][0]['KeyPairId']
             rtn['key_fingerprint'] = existing_key['KeyPairs'][0]['KeyFingerprint']
             for t in existing_key['KeyPairs'][0]['Tags']:
@@ -193,7 +190,6 @@ class KP(AWSResourceBase):
                 else:
                     logger.warning("No ssh private key file found at '%s'", ssh_key_file.absolute())
             return False
-
 
         except ClientError as e:
             handle_client_error(e)

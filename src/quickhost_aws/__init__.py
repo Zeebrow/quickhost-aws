@@ -18,6 +18,6 @@ def get_parser():
     return AWSParser
 
 
-def load_plugin():
+def get_app():
     from .AWSApp import AWSApp
     return AWSApp
