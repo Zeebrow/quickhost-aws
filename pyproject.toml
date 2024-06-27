@@ -1,3 +1,30 @@
 [build-system]
 requires = ['setuptools']
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "quickhost-aws"
+version = "0.2.0"
+authors = [
+  { name="zeebrow", email="zeebrow@zeebrow.io" },
+]
+description = "AWS plugin for quickhost"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+  "boto3",
+  "cryptography"
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/zeebrow/quickhost"
+Issues = "https://github.com/zeebrow/quickhost/issues"
+
+[project.entry-points."quickhost_plugin"]
+aws_app = "quickhost_aws:get_app"
+aws_parser = "quickhost_aws:get_parser"

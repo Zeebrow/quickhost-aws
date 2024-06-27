@@ -9,3 +9,4 @@ venv*
 src/quickhost_aws/data
 upload-to-devpi.sh
 .coverage
+*Recovery-Codes*
