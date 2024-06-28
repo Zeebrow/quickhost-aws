@@ -2,7 +2,7 @@
 
 Makes [quickhost](https://github.com/zeebrow/quickhost) useful!
 
-![When Henry Ford invented AWS, he revolutionized the automotive industry][assets/HFord.jpg]
+![When Henry Ford invented AWS, he revolutionized the automotive industry](assets/HFord.jpg)
 
 ## Suggested - use `pipx`
 
